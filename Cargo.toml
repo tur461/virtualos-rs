@@ -1,0 +1,29 @@
+[package]
+name = "virtualos-rs"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = [
+    "crates/cli",
+    "crates/engine",
+    "crates/storage",
+    "crates/network",
+    "crates/cgroups",
+    "crates/monitoring",
+    "crates/logging",
+    "crates/ebpf",
+    "crates/virtualization",
+    "crates/daemon",
+    "crates/proto",
+]
+resolver = "2"
+
+
+[workspace.dependencies]
+nix = { version = "0.31.3", features = ["fs", "ioctl", "net", "poll", "process", "pthread", "ptrace", "resource", "signal"] }
+cgroups-rs = "0.5.0"
+clap = "4.6.1"
+tokio = { version = "1.52.3", features = ["full"] }
+tokio-util = "0.7.18"
+futures = "0.3.32"
