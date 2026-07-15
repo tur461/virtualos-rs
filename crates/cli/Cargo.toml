@@ -8,4 +8,7 @@ name = "virtualos-rs"
 path = "src/main.rs"
 
 [dependencies]
+clap = { workspace = true, features = ["derive"] }
+engine = { path = "../engine" }
 nix = { workspace = true, features = ["mount", "sched", "hostname"] }
+storage = { path = "../storage"}
