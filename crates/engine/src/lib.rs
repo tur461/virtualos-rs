@@ -1,7 +1,6 @@
 mod container;
 mod image;
-mod mount;
+pub mod mount;
 
-pub use container::ContainerManager;
+pub use container::types::{ContainerManager, ResourceLimits};
 pub use image::puller::pull_image;
-pub use mount::prepare_rootfs;

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
+cgroups = { path = "../cgroups" }
 flate2 = "1.1.9"
 hex = { workspace = true }
 nix = { workspace = true }
