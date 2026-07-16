@@ -16,9 +16,15 @@ impl Store {
         Store { root: root.into() }
     }
 
+    fn digest_dir_name(digest: &str) -> String {
+        digest.replace(':', "_")
+    }
+
     /// Return the path where a layer with the given diff_id should be stored.
     pub fn layer_path(&self, diff_id: &str) -> PathBuf {
-        self.root.join("layers").join(diff_id)
+        self.root
+            .join("layers")
+            .join(Self::digest_dir_name(diff_id))
     }
 
     /// Unpack a layer from a reader and store it under the given diff_id.

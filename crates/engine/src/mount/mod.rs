@@ -27,6 +27,10 @@ impl MountedRoot {
         // When `_temp` is dropped, the temp directory (with upper/work) is removed.
         Ok(())
     }
+
+    pub fn detach(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Prepare a container rootfs from an image.
