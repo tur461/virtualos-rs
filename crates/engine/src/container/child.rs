@@ -135,11 +135,9 @@ impl ChildConfig {
         );
 
         // If detach, create a new session to lose the controlling terminal
-        if is_detach {
-            if let Err(e) = setsid() {
-                eprintln!("setsid failed: {}", e);
-                return 1;
-            }
+        if is_detach && let Err(e) = setsid() {
+            eprintln!("setsid failed: {}", e);
+            return 1;
         }
 
         // Execute the command

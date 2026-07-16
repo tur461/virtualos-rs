@@ -17,11 +17,11 @@ pub fn parse_image_reference(reference: &str) -> Result<(String, String, String)
     let mut registry = DEFAULT_REGISTRY.to_string();
     let mut remainder = reference;
 
-    if let Some(first) = reference.split('/').next() {
-        if first.contains('.') || first.contains(':') || first == "localhost" {
-            registry = first.to_string();
-            remainder = &reference[first.len() + 1..];
-        }
+    if let Some(first) = reference.split('/').next()
+        && (first.contains('.') || first.contains(':') || first == "localhost")
+    {
+        registry = first.to_string();
+        remainder = &reference[first.len() + 1..];
     }
 
     let (repo, tag) = match remainder.rsplit_once(':') {

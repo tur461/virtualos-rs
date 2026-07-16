@@ -197,17 +197,17 @@ impl ContainerManager {
             self.stop(id)?;
         }
         // Unmount rootfs if still mounted
-        if let Some(ref rootfs) = container.rootfs_path {
-            if rootfs.exists() {
-                // Try to unmount (ignore error if already unmounted)
-                let _ = storage::unmount(rootfs);
-            }
+        if let Some(ref rootfs) = container.rootfs_path
+            && rootfs.exists()
+        {
+            // Try to unmount (ignore error if already unmounted)
+            let _ = Store::unmount(rootfs);
         }
         // Remove temp directory (upper/work)
-        if let Some(ref temp) = container.temp_dir {
-            if temp.exists() {
-                fs::remove_dir_all(temp).ok();
-            }
+        if let Some(ref temp) = container.temp_dir
+            && temp.exists()
+        {
+            fs::remove_dir_all(temp).ok();
         }
         // Remove container directory
         let dir = self.container_dir(id);
@@ -233,16 +233,15 @@ impl ContainerManager {
                     let data = fs::read_to_string(&state_file)?;
                     let mut cont: Container = serde_json::from_str(&data)?;
                     // If status is Running, check if PID is still alive; if not, mark as Stopped.
-                    if cont.status == ContainerStatus::Running {
-                        if let Some(pid) = cont.pid {
-                            if kill(Pid::from_raw(pid), None).is_err() {
-                                cont.status = ContainerStatus::Stopped;
-                                cont.pid = None;
-                                // Update state on disk
-                                let json = serde_json::to_string_pretty(&cont)?;
-                                fs::write(&state_file, json).ok();
-                            }
-                        }
+                    if cont.status == ContainerStatus::Running
+                        && let Some(pid) = cont.pid
+                        && kill(Pid::from_raw(pid), None).is_err()
+                    {
+                        cont.status = ContainerStatus::Stopped;
+                        cont.pid = None;
+                        // Update state on disk
+                        let json = serde_json::to_string_pretty(&cont)?;
+                        fs::write(&state_file, json).ok();
                     }
                     containers.push(cont);
                 }

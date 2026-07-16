@@ -16,7 +16,7 @@ pub struct MountedRoot {
     /// Path to the merged directory that can be used as container root.
     pub root_path: PathBuf,
     // We keep the tempdir alive so that upper/work are not deleted.
-    _temp: TempDir,
+    temp: Option<TempDir>,
 }
 
 impl MountedRoot {
@@ -28,8 +28,19 @@ impl MountedRoot {
         Ok(())
     }
 
-    pub fn detach(&self) -> Result<()> {
-        Ok(())
+    /// Detach the mounted rootfs from this object.
+    ///
+    /// The overlay mount remains active, and ownership of the backing
+    /// temporary directory is transferred to the caller.
+    pub fn detach(mut self) -> (PathBuf, PathBuf) {
+        let rootfs = self.root_path.clone();
+
+        let temp = self.temp.take().expect("MountedRoot already detached");
+
+        // Persist the temporary directory instead of deleting it on drop.
+        let temp_path = temp.keep();
+
+        (rootfs, temp_path)
     }
 }
 
@@ -77,6 +88,6 @@ pub fn prepare_rootfs(reference: &str, store: &Store) -> Result<MountedRoot> {
 
     Ok(MountedRoot {
         root_path: merged,
-        _temp: temp,
+        temp: Some(temp),
     })
 }

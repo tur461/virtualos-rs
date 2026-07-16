@@ -1,6 +1,6 @@
 // storage/src/lib.rs
-use anyhow::Result;
-use nix::mount::{MsFlags, mount};
+use anyhow::{Context, Result};
+use nix::mount::{MntFlags, MsFlags, mount, umount2};
 use sha2::{Digest, Sha256};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -113,5 +113,16 @@ impl Store {
             Some(data.as_str()),
         )
         .map_err(Into::into)
+    }
+
+    /// Unmount a filesystem.
+    ///
+    /// Uses MNT_DETACH (lazy unmount), which is the same behavior used by
+    /// Docker/runc when cleaning up container mount namespaces.
+    pub fn unmount(target: impl AsRef<Path>) -> Result<()> {
+        umount2(target.as_ref(), MntFlags::MNT_DETACH)
+            .with_context(|| format!("Failed to unmount {}", target.as_ref().display()))?;
+
+        Ok(())
     }
 }
