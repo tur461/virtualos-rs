@@ -72,4 +72,6 @@ pub enum Commands {
         #[arg(long)]
         cpus: Option<f64>,
     },
+    /// Initialise host bridge and NAT (run once)
+    NetworkInit,
 }

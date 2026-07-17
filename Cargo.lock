@@ -209,6 +209,7 @@ dependencies = [
  "anyhow",
  "clap",
  "engine",
+ "network",
  "nix",
  "storage",
 ]
@@ -331,6 +332,7 @@ dependencies = [
  "cgroups",
  "flate2",
  "hex",
+ "network",
  "nix",
  "reqwest",
  "serde",
@@ -882,6 +884,9 @@ version = "0.1.0"
 [[package]]
 name = "network"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
 
 [[package]]
 name = "nix"

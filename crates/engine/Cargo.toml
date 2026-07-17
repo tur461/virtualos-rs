@@ -8,6 +8,7 @@ anyhow = { workspace = true }
 cgroups = { path = "../cgroups" }
 flate2 = "1.1.9"
 hex = { workspace = true }
+network = { path = "../network" }
 nix = { workspace = true }
 reqwest = { workspace = true, features = ["json", "blocking", "rustls"], default-features = false }
 serde = { workspace = true, features = ["derive"] }

@@ -4,17 +4,19 @@ use super::{
 };
 use crate::mount::prepare_rootfs;
 
-use super::child::ChildConfig;
+use super::types::Child;
 use nix::{
     sys::{
         signal::{Signal, kill},
         wait::{WaitPidFlag, waitpid},
     },
-    unistd::Pid,
+    unistd::{Pid, pipe},
 };
 
 use std::{
     fs::{self},
+    net::Ipv4Addr,
+    os::fd::AsRawFd,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -47,6 +49,35 @@ impl ContainerManager {
             base_dir,
             cgroup_parent: docklet_cgroup,
         }
+    }
+
+    /// Allocate the next available IP in the 10.0.0.0/24 subnet.
+    /// This scans existing containers (via the manager) and picks the smallest free host part >= 2.
+    pub fn allocate_ip(&self) -> Result<String> {
+        let containers = self.list()?;
+        let mut used: Vec<u8> = containers
+            .iter()
+            .filter_map(|c| c.network_ip.as_ref())
+            .map(|ip| {
+                ip.parse::<Ipv4Addr>()
+                    .map(|addr| addr.octets()[3])
+                    .unwrap_or(0)
+            })
+            .collect();
+        used.sort_unstable();
+
+        let mut next = 2u8;
+        for u in used {
+            if u == next {
+                next += 1;
+            } else if u > next {
+                break;
+            }
+        }
+        if next > 254 {
+            anyhow::bail!("No free IP addresses in the container subnet");
+        }
+        Ok(format!("10.0.0.{}", next))
     }
 
     fn container_dir(&self, id: &str) -> PathBuf {
@@ -90,7 +121,7 @@ impl ContainerManager {
             .unwrap()
             .as_secs()
             .to_string();
-
+        let ip = self.allocate_ip()?;
         let container = Container {
             id: id.clone(),
             image: image.to_string(),
@@ -104,6 +135,7 @@ impl ContainerManager {
             memory_limit: limits.memory,
             cpu_limit: limits.cpus,
             cgroup_path: None,
+            network_ip: Some(ip),
         };
 
         // Save state
@@ -131,10 +163,13 @@ impl ContainerManager {
         let cmd = container.command.clone();
         let args = container.args.clone();
 
+        let (rx, tx) = pipe()?; // rx is read end, tx is write end
+        let ready_fd = rx.as_raw_fd();
         // Build the child configuration
 
-        let child_cfg = ChildConfig::new(&rootfs, &cmd, &args, is_detach);
-
+        let child = Child::new(&rootfs, &cmd, &args, is_detach, ready_fd);
+        // Close our copy of the read end so that if we crash, child sees EOF
+        drop(rx);
         // Apply cgroup limits if any are set
         if container.memory_limit.is_some() || container.cpu_limit.is_some() {
             let cg_path = apply_cgroup_limits(
@@ -148,8 +183,8 @@ impl ContainerManager {
 
             container.cgroup_path = Some(cg_path);
         }
-        let child_pid = child_cfg
-            .run_child(&self.cgroup_parent.join(&container.id))
+        let child_pid = child
+            .run(&self.cgroup_parent.join(&container.id))
             .context("Failed to start container process")?;
 
         // eprintln!(
@@ -157,6 +192,15 @@ impl ContainerManager {
         //     std::fs::read_to_string(format!("/proc/{}/cgroup", child_pid.as_raw()))
         //         .unwrap_or_default()
         // );
+        // Set up network if the container has an IP
+        if let Some(ref ip) = container.network_ip {
+            network::setup_container_net(child_pid.as_raw() as u32, &container.id, ip)?;
+        }
+
+        // Signal child to proceed
+        nix::unistd::write(&tx, &[0])?;
+        // tx will be dropped, closing the write end.
+        drop(tx);
         // Update container state
         container.status = ContainerStatus::Running;
         container.pid = Some(child_pid.as_raw());
@@ -210,6 +254,12 @@ impl ContainerManager {
             }
             container.cgroup_path = None;
         }
+
+        if let Some(_ref_ip) = &container.network_ip {
+            let _ = network::teardown_container_net(&container.id);
+            // we could keep the IP, but it's freed by teardown; no need to mark as None.
+        }
+
         self.save_container(&container)?;
         println!("Container {} stopped", id);
         Ok(())
@@ -239,6 +289,11 @@ impl ContainerManager {
             && let Ok(cg) = cgroups::Cgroup::from_path(cg_path)
         {
             let _ = cg.delete();
+        }
+
+        if let Some(_ref_ip) = &container.network_ip {
+            let _ = network::teardown_container_net(&container.id);
+            // we could keep the IP, but it's freed by teardown; no need to mark as None.
         }
 
         // Remove container directory

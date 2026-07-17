@@ -10,30 +10,32 @@ use nix::{
 use std::{
     ffi::CString,
     fs::{self, OpenOptions},
-    os::unix::fs::OpenOptionsExt,
+    os::{
+        fd::{BorrowedFd, RawFd},
+        unix::fs::OpenOptionsExt,
+    },
     path::{Path, PathBuf},
 };
 
-use crate::container::helpers::clone_into_cgroup;
+use crate::container::{
+    helpers::clone_into_cgroup,
+    types::{Child, ChildConfig},
+};
 
-pub struct ChildConfig {
-    rootfs: String,
-    command: String,
-    args: Vec<String>,
-    detach: bool,
-}
-
-impl ChildConfig {
-    pub fn new(r: &str, c: &str, a: &[String], d: bool) -> Self {
+impl Child {
+    pub fn new(r: &str, c: &str, a: &[String], d: bool, rfd: RawFd) -> Self {
         Self {
-            rootfs: r.to_string(),
-            command: c.to_string(),
-            args: a.to_vec(),
-            detach: d,
+            config: ChildConfig {
+                rootfs: r.to_string(),
+                command: c.to_string(),
+                args: a.to_vec(),
+                detach: d,
+                ready_fd: Some(rfd),
+            },
         }
     }
 
-    pub fn run_child(&self, cg_path: &PathBuf) -> Result<Pid> {
+    pub fn run(&self, cg_path: &PathBuf) -> Result<Pid> {
         let flags = (CloneFlags::CLONE_NEWPID
             | CloneFlags::CLONE_NEWUTS
             | CloneFlags::CLONE_NEWNS
@@ -51,25 +53,14 @@ impl ChildConfig {
             .open(cg_path)?;
 
         // use clone3 helper
-        let child_pid = clone_into_cgroup(
-            || {
-                Self::child_init(
-                    self.rootfs.clone(),
-                    self.command.clone(),
-                    self.args.clone(),
-                    self.detach,
-                )
-            },
-            flags,
-            cg_fd,
-        )?;
+        let child_pid = clone_into_cgroup(|| self.init(), flags, cg_fd)?;
 
         // Note: The child function must not return.
         Ok(child_pid)
     }
 
     // The child init function (previously child_func) runs inside new namespaces.
-    pub fn child_init(rootfs: String, cmd: String, args: Vec<String>, is_detach: bool) -> i32 {
+    pub fn init(&self) -> i32 {
         if let Err(e) = sethostname("my-container") {
             eprintln!("sethostname failed: {}", e);
             return 1;
@@ -87,8 +78,8 @@ impl ChildConfig {
         }
 
         if let Err(e) = mount::<str, str, str, str>(
-            Some(&rootfs),
-            &rootfs,
+            Some(&self.config.rootfs),
+            &self.config.rootfs,
             None,
             MsFlags::MS_BIND | MsFlags::MS_REC,
             None,
@@ -97,7 +88,7 @@ impl ChildConfig {
             return 1;
         }
 
-        let rootfs = Path::new(&rootfs);
+        let rootfs = Path::new(&self.config.rootfs);
 
         let rfs_proc_path = rootfs.join("proc");
         let rfs_sys_path = rootfs.join("sys");
@@ -194,17 +185,31 @@ impl ChildConfig {
             return 1;
         }
 
+        if let Some(fd) = self.config.ready_fd {
+            let mut buf = [0u8; 1];
+
+            // SAFETY: fd is valid for the duration of this scope.
+            let borrowed = unsafe { BorrowedFd::borrow_raw(fd) };
+
+            let _ = nix::unistd::read(borrowed, &mut buf);
+            let _ = nix::unistd::close(fd);
+        }
+
         // If detach, create a new session to lose the controlling terminal
-        if is_detach && let Err(e) = setsid() {
+        if self.config.detach
+            && let Err(e) = setsid()
+        {
             eprintln!("setsid failed: {}", e);
             return 1;
         }
 
         // Execute the command
-        let cmd_c =
-            CString::new(cmd.as_bytes()).unwrap_or_else(|_| CString::new("/bin/sh").unwrap());
+        let cmd_c = CString::new(self.config.command.as_bytes())
+            .unwrap_or_else(|_| CString::new("/bin/sh").unwrap());
 
-        let args_c: Vec<CString> = args
+        let args_c: Vec<CString> = self
+            .config
+            .args
             .iter()
             .map(|a| CString::new(a.as_bytes()).unwrap())
             .collect();

@@ -139,6 +139,10 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
                 }
             }
         }
+        Commands::NetworkInit => {
+            network::init_network().context("Network init failed")?;
+            eprintln!("Bridge docklet0 created and NAT rule added.");
+        }
     }
     Ok(())
 }

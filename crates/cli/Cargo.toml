@@ -11,5 +11,6 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 engine = { path = "../engine" }
+network = { path = "../network" }
 nix = { workspace = true, features = ["mount", "sched", "hostname"] }
 storage = { path = "../storage"}

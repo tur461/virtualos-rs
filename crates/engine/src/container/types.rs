@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{os::fd::RawFd, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -30,9 +30,23 @@ pub struct Container {
     pub memory_limit: Option<u64>,    // bytes
     pub cpu_limit: Option<f64>,       // CPUs (e.g., 1.5)
     pub cgroup_path: Option<PathBuf>, // path to cgroup dir
+    // network
+    pub network_ip: Option<String>,
 }
 
 pub struct ContainerManager {
     pub base_dir: PathBuf,
     pub cgroup_parent: PathBuf,
+}
+
+pub struct ChildConfig {
+    pub rootfs: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub detach: bool,
+    pub ready_fd: Option<RawFd>,
+}
+
+pub struct Child {
+    pub config: ChildConfig,
 }

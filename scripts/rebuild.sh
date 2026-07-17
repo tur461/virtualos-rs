@@ -8,6 +8,6 @@ echo "Removing old target directory.."
 sudo rm -rf target
 
 echo "Rebuilding whole workspace.."
-cargo build --workspace 1>/dev/null 2>/dev/null
+cargo build --workspace 1>/dev/null
 
 echo "done."
