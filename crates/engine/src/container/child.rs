@@ -1,11 +1,9 @@
 #![allow(irrefutable_let_patterns)]
 
-// ----------- Child Process Execution ----------
-
 use anyhow::Result;
 use nix::{
     libc,
-    mount::{MsFlags, mount},
+    mount::{MntFlags, MsFlags, mount, umount2},
     sched::CloneFlags,
     unistd::{Pid, chdir, execvp, pivot_root, sethostname, setsid},
 };
@@ -35,40 +33,36 @@ impl ChildConfig {
         }
     }
 
-    /// # Safety
-    /// The caller must ensure the stack remains valid for the lifetime of the child.
     pub fn run_child(&self, cg_path: &PathBuf) -> Result<Pid> {
-        // let stack_size = 1024 * 1024;
-        // let mut stack = vec![0u8; stack_size];
         let flags = (CloneFlags::CLONE_NEWPID
             | CloneFlags::CLONE_NEWUTS
             | CloneFlags::CLONE_NEWNS
             | CloneFlags::CLONE_NEWCGROUP)
             .bits() as u64;
 
-        let mut rootfs = Some(self.rootfs.to_owned());
-        let mut cmd = Some(self.command.to_owned());
-        let mut args = Some(self.args.to_owned());
-
         // Prepare the cgroup directory and get a fd
         // Open cgroup directory with O_DIRECTORY (required for CLONE_INTO_CGROUP)
+        // eprintln!("creating cg_path: {cg_path:?}");
+
         fs::create_dir_all(cg_path)?;
         let cg_fd = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
             .open(cg_path)?;
 
-        // SAFETY: The stack we provided is valid and large enough.
-        // The child function will not outlive the stack because the parent
-        // waits for the child to terminate before dropping the stack.
-        let cb = || {
-            let rootfs_clone = rootfs.take().expect("callback called more than once");
-            let cmd_clone = cmd.take().expect("callback called more than once");
-            let args_clone = args.take().expect("callback called more than once");
-            Self::child_init(rootfs_clone, cmd_clone, args_clone, self.detach)
-        };
-        let child_pid = clone_into_cgroup(cb, flags, cg_fd)?;
-        // clone(cb, &mut stack, flags, Some(Signal::SIGCHLD as i32))?
+        // use clone3 helper
+        let child_pid = clone_into_cgroup(
+            || {
+                Self::child_init(
+                    self.rootfs.clone(),
+                    self.command.clone(),
+                    self.args.clone(),
+                    self.detach,
+                )
+            },
+            flags,
+            cg_fd,
+        )?;
 
         // Note: The child function must not return.
         Ok(child_pid)
@@ -76,14 +70,11 @@ impl ChildConfig {
 
     // The child init function (previously child_func) runs inside new namespaces.
     pub fn child_init(rootfs: String, cmd: String, args: Vec<String>, is_detach: bool) -> i32 {
-        // 1. Set hostname
         if let Err(e) = sethostname("my-container") {
             eprintln!("sethostname failed: {}", e);
             return 1;
         }
-        eprintln!("after sethostname");
 
-        // 2. Make / private
         if let Err(e) = mount::<str, str, str, str>(
             None,
             "/",
@@ -91,14 +82,10 @@ impl ChildConfig {
             MsFlags::MS_PRIVATE | MsFlags::MS_REC,
             None,
         ) {
-            eprintln!("mount --make-rprivate / failed: {}", e);
+            eprintln!("mount / failed: {}", e);
             return 1;
         }
-        eprintln!("after mount-(--make-rprivate)");
 
-        // 3. Bind mount rootfs onto itself, pivot, etc. – same as Phase 4 but using config.rootfs
-
-        // 3a. Bind mount rootfs
         if let Err(e) = mount::<str, str, str, str>(
             Some(&rootfs),
             &rootfs,
@@ -106,111 +93,122 @@ impl ChildConfig {
             MsFlags::MS_BIND | MsFlags::MS_REC,
             None,
         ) {
-            eprintln!("bind mount rootfs failed: {}", e);
+            eprintln!("mount rootfs failed: {}", e);
             return 1;
         }
-        eprintln!("after bind-mount-rootfs");
+
         let rootfs = Path::new(&rootfs);
 
-        let _ = fs::create_dir_all(rootfs.join("proc"));
-        let _ = fs::create_dir_all(rootfs.join("sys"));
-        let _ = fs::create_dir_all(rootfs.join("sys/fs"));
-        let _ = fs::create_dir_all(rootfs.join("sys/fs/cgroup"));
-        let _ = fs::create_dir_all(rootfs.join("dev"));
-        let _ = fs::create_dir_all(rootfs.join("dev/pts"));
-        let _ = fs::create_dir_all(rootfs.join(".old_root"));
+        let rfs_proc_path = rootfs.join("proc");
+        let rfs_sys_path = rootfs.join("sys");
+        let rfs_sysfs_path = rootfs.join("sys/fs");
+        let rfs_cg_path = rootfs.join("sys/fs/cgroup");
+        let rfs_dev_path = rootfs.join("dev");
+        let rfs_devpts_path = rootfs.join("dev/pts");
+        let rfs_oldroot_path = rootfs.join(".old_root");
 
-        if let Err(e) = mount::<str, str, str, str>(
-            Some("/sys/fs/cgroup"), // host source
-            rootfs.join("sys/fs/cgroup").to_str().unwrap(),
-            None,
-            MsFlags::MS_BIND,
-            None::<&str>,
-        ) {
-            eprintln!("Warning: failed to bind-mount cgroup: {}", e);
+        let create_dirs = || -> Result<()> {
+            fs::create_dir_all(rfs_proc_path)?;
+            fs::create_dir_all(rfs_sys_path)?;
+            fs::create_dir_all(rfs_sysfs_path)?;
+            fs::create_dir_all(&rfs_cg_path)?;
+            fs::create_dir_all(rfs_dev_path)?;
+            fs::create_dir_all(rfs_devpts_path)?;
+            fs::create_dir_all(&rfs_oldroot_path)?;
+            Ok(())
+        };
+
+        if let Err(e) = create_dirs() {
+            eprintln!("Error creating dirs: {e}");
+            return 1;
         }
 
-        eprintln!("after mount-cgroup");
-
-        if let Err(e) = pivot_root(rootfs, rootfs.join(".old_root").to_str().unwrap()) {
+        if let Err(e) = pivot_root(rootfs, rfs_oldroot_path.to_str().unwrap()) {
             eprintln!("pivot_root failed: {}", e);
             return 1;
         }
-        eprintln!("after pivot_root");
 
         if let Err(e) = chdir("/") {
             eprintln!("chdir / failed: {}", e);
             return 1;
         }
-        eprintln!("after chdir");
 
         // Unmount old root
-        let _ = nix::mount::umount2("/.old_root", nix::mount::MntFlags::MNT_DETACH);
+        if let Err(e) = umount2("/.old_root", MntFlags::MNT_DETACH) {
+            eprintln!("mount2 .old_root failed: {e}");
+            return 1;
+        }
+
         let _ = fs::remove_dir("/.old_root");
-        eprintln!("after umount-old_root");
 
         // Mount standard filesystems
-        let _ = mount::<str, str, str, str>(
-            Some("proc"),
-            "/proc",
-            Some("proc"),
-            MsFlags::empty(),
-            None,
-        );
-        eprintln!("after mount-proc");
-        let _ = mount::<str, str, str, str>(
+        if let Err(e) =
+            mount::<str, str, str, str>(Some("proc"), "/proc", Some("proc"), MsFlags::empty(), None)
+        {
+            eprintln!("mount proc failed: {e}");
+            return 1;
+        }
+
+        if let Err(e) = mount::<str, str, str, str>(
             Some("sysfs"),
             "/sys",
             Some("sysfs"),
             MsFlags::empty(),
             None,
-        );
-        eprintln!("after mount-sysfs");
-        let _ = mount::<str, str, str, str>(
+        ) {
+            eprintln!("mount sysfs failed: {e}");
+            return 1;
+        }
+
+        if let Err(e) = mount::<str, str, str, str>(
             Some("devtmpfs"),
             "/dev",
             Some("devtmpfs"),
             MsFlags::empty(),
             None,
-        );
-        eprintln!("after mount-devtmpfs");
-        let _ = mount::<str, str, str, str>(
+        ) {
+            eprintln!("mount devtmpfs failed: {e}");
+            return 1;
+        }
+
+        if let Err(e) = mount::<str, str, str, str>(
             Some("devpts"),
             "/dev/pts",
             Some("devpts"),
             MsFlags::empty(),
             None,
-        );
-        eprintln!("after mount-devpts");
+        ) {
+            eprintln!("mount devpts failed: {e}");
+            return 1;
+        }
+
         // Ensure cgroup mountpoint exists
-        // let _ = std::fs::create_dir_all("/sys/fs/cgroup");
-        // let _ = mount::<str, str, str, str>(
-        //     Some("cgroup2"),
-        //     "/sys/fs/cgroup",
-        //     Some("cgroup2"),
-        //     MsFlags::empty(),
-        //     None::<&str>,
-        // );
-        // eprintln!("after mount-cgroup2");
-        // Bind-mount the host's cgroup tree into the new rootfs so that
-        // /sys/fs/cgroup is visible inside the container.
+        if let Err(e) = mount::<str, str, str, str>(
+            Some("cgroup2"),
+            "/sys/fs/cgroup",
+            Some("cgroup2"),
+            MsFlags::empty(),
+            None::<&str>,
+        ) {
+            eprintln!("Error mounting cgroup2 {e}");
+            return 1;
+        }
 
         // If detach, create a new session to lose the controlling terminal
         if is_detach && let Err(e) = setsid() {
             eprintln!("setsid failed: {}", e);
             return 1;
         }
-        eprintln!("after is_detach (check): {is_detach}");
 
         // Execute the command
         let cmd_c =
             CString::new(cmd.as_bytes()).unwrap_or_else(|_| CString::new("/bin/sh").unwrap());
-        eprintln!("Running inside container: {cmd}");
+
         let args_c: Vec<CString> = args
             .iter()
             .map(|a| CString::new(a.as_bytes()).unwrap())
             .collect();
-        eprintln!("after argc: {args_c:?}");
+
         let exec_args: Vec<&CString> = if args_c.is_empty() {
             vec![&cmd_c]
         } else {
@@ -221,7 +219,7 @@ impl ChildConfig {
             eprintln!("execvp failed: {}", e);
             return 1;
         }
-        eprintln!("after execvp");
+
         unreachable!();
     }
 }

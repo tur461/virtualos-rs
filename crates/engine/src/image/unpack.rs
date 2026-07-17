@@ -4,6 +4,7 @@ use reqwest::blocking::Client;
 use storage::Store;
 
 /// Download a layer blob, decompress, verify diff_id, and store it.
+#[allow(clippy::too_many_arguments)]
 pub fn download_and_unpack_layer(
     client: &Client,
     registry: &str,

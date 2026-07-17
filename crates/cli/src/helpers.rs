@@ -5,7 +5,7 @@ pub fn parse_memory(s: &str) -> Result<u64, anyhow::Error> {
     if s.is_empty() {
         bail!("empty memory string");
     }
-    let (num_str, suffix) = if let Some(pos) = s.find(|c: char| !c.is_digit(10) && c != '.') {
+    let (num_str, suffix) = if let Some(pos) = s.find(|c: char| !c.is_ascii_digit() && c != '.') {
         (&s[..pos], &s[pos..])
     } else {
         (s.as_str(), "")

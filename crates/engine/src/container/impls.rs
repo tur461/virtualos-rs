@@ -145,21 +145,18 @@ impl ContainerManager {
                     cpus: container.cpu_limit,
                 },
             )?;
-            let procs_file = cg_path.join("cgroup.procs");
-            let procs_content = std::fs::read_to_string(&procs_file).unwrap_or_default();
-            eprintln!("debug: cgroup.procs contains: {}", procs_content);
-            eprintln!("debug: cgroup path = {:?}", cg_path);
+
             container.cgroup_path = Some(cg_path);
         }
         let child_pid = child_cfg
             .run_child(&self.cgroup_parent.join(&container.id))
             .context("Failed to start container process")?;
 
-        eprintln!(
-            "debug: child cgroup = {}",
-            std::fs::read_to_string(format!("/proc/{}/cgroup", child_pid.as_raw()))
-                .unwrap_or_default()
-        );
+        // eprintln!(
+        //     "debug: child cgroup = {}",
+        //     std::fs::read_to_string(format!("/proc/{}/cgroup", child_pid.as_raw()))
+        //         .unwrap_or_default()
+        // );
         // Update container state
         container.status = ContainerStatus::Running;
         container.pid = Some(child_pid.as_raw());
