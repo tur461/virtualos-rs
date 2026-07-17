@@ -65,11 +65,15 @@ impl Cgroup {
     }
 
     /// Add a process (by PID) to this cgroup.
-    pub fn add_process(&self, pid: u32) -> Result<()> {
-        let procs = self.path.join("cgroup.procs");
-        fs::write(&procs, pid.to_string())
-            .with_context(|| format!("Failed to add PID {} to cgroup.procs", pid))
-    }
+    // pub fn add_process(&self, pid: u32) -> Result<()> {
+    //     let procs = self.path.join("cgroup.procs");
+    //     let content = format!("{}\n", pid);
+    //     eprintln!("debug: writing '{}' to {}", content.trim(), procs.display());
+    //     fs::write(&procs, &content)
+    //         .with_context(|| format!("Failed to add PID {} to cgroup.procs", pid))?;
+    //     eprintln!("debug: write succeeded");
+    //     Ok(())
+    // }
 
     /// Remove the cgroup directory. This will fail if there are still processes,
     /// but we call it after the container is stopped (empty).

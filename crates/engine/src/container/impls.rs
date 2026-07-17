@@ -14,7 +14,7 @@ use nix::{
 };
 
 use std::{
-    fs,
+    fs::{self},
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -24,10 +24,28 @@ use storage::Store;
 use uuid::Uuid;
 
 impl ContainerManager {
-    pub fn new(base_dir: impl Into<PathBuf>, cgroup_parent: impl Into<PathBuf>) -> Self {
+    pub fn new(base_dir: impl Into<PathBuf>) -> Self {
+        let base_dir = base_dir.into();
+        // Auto-detect a cgroup parent where memory and cpu are available.
+        // let cgroup_parent = find_cgroup_parent(&["memory", "cpu"]).expect(
+        //     "cgroup delegation missing: ensure cgroup v2 is available and controllers are enabled",
+        // );
+        // .unwrap_or_else(|_| PathBuf::from("/sys/fs/cgroup"));
+        // Ensure the docklet subdirectory exists inside that parent.
+        // let docklet_cgroup = cgroup_parent.join("docklet");
+
+        let docklet_cgroup = PathBuf::from("/sys/fs/cgroup/docklet");
+        // Ensure we have a fresh directory so that controllers are inherited
+        // from the detected parent.
+        // if docklet_cgroup.exists() {
+        //     let _ = std::fs::remove_dir(&docklet_cgroup);
+        // }
+        std::fs::create_dir_all(&docklet_cgroup)
+            .expect("Failed to create docklet cgroup directory");
+
         ContainerManager {
-            base_dir: base_dir.into(),
-            cgroup_parent: cgroup_parent.into(),
+            base_dir,
+            cgroup_parent: docklet_cgroup,
         }
     }
 
@@ -97,7 +115,7 @@ impl ContainerManager {
     }
 
     /// Start a container that is in Created state.
-    pub fn start(&self, id: &str) -> Result<()> {
+    pub fn start(&self, id: &str, is_detach: bool) -> Result<()> {
         let mut container = self.load_container(id)?;
         if container.status != ContainerStatus::Created {
             anyhow::bail!("Container {} is not in Created state", id);
@@ -115,10 +133,7 @@ impl ContainerManager {
 
         // Build the child configuration
 
-        let child_cfg = ChildConfig::new(&rootfs, &cmd, &args, true);
-
-        let child_pid =
-            unsafe { child_cfg.run_child() }.context("Failed to start container process")?;
+        let child_cfg = ChildConfig::new(&rootfs, &cmd, &args, is_detach);
 
         // Apply cgroup limits if any are set
         if container.memory_limit.is_some() || container.cpu_limit.is_some() {
@@ -129,10 +144,22 @@ impl ContainerManager {
                     memory: container.memory_limit,
                     cpus: container.cpu_limit,
                 },
-                &child_pid,
             )?;
+            let procs_file = cg_path.join("cgroup.procs");
+            let procs_content = std::fs::read_to_string(&procs_file).unwrap_or_default();
+            eprintln!("debug: cgroup.procs contains: {}", procs_content);
+            eprintln!("debug: cgroup path = {:?}", cg_path);
             container.cgroup_path = Some(cg_path);
         }
+        let child_pid = child_cfg
+            .run_child(&self.cgroup_parent.join(&container.id))
+            .context("Failed to start container process")?;
+
+        eprintln!(
+            "debug: child cgroup = {}",
+            std::fs::read_to_string(format!("/proc/{}/cgroup", child_pid.as_raw()))
+                .unwrap_or_default()
+        );
         // Update container state
         container.status = ContainerStatus::Running;
         container.pid = Some(child_pid.as_raw());

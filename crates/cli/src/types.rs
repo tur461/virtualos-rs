@@ -9,9 +9,6 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Commands,
-
-    #[arg(long, default_value = "/sys/fs/cgroup/docklet")]
-    pub cgroup_parent: PathBuf,
 }
 
 #[derive(Subcommand, Debug)]
@@ -42,7 +39,11 @@ pub enum Commands {
         cpus: Option<f64>,
     },
     /// Start a created container
-    Start { id: String },
+    Start {
+        id: String,
+        #[arg(short, long, default_value_t = false)]
+        detach: bool,
+    },
     /// Stop a running container
     Stop { id: String },
     /// Remove a container
@@ -51,7 +52,7 @@ pub enum Commands {
     Ps,
     /// Run a container (create + start, optionally foreground)
     Run {
-        #[arg(short, long)]
+        #[arg(short, long, default_value_t = false)]
         detach: bool,
 
         #[arg(short, long)]

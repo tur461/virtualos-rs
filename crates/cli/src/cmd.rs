@@ -44,8 +44,8 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
             }
         }
 
-        Commands::Start { id } => {
-            if let Err(e) = mgr.start(&id) {
+        Commands::Start { id, detach } => {
+            if let Err(e) = mgr.start(&id, detach) {
                 eprintln!("Start error: {:?}", e);
                 process::exit(1);
             }
@@ -110,7 +110,7 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
                 }
             };
             // Start it
-            if let Err(e) = mgr.start(&container.id) {
+            if let Err(e) = mgr.start(&container.id, detach) {
                 eprintln!("Run start error: {:?}", e);
                 // Cleanup the container we just created
                 let _ = mgr.delete(&container.id);
