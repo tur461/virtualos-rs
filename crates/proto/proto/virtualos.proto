@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package virtualos;
+
+service VirtualOs {
+  rpc Pull(PullRequest) returns (PullResponse);
+  rpc Create(CreateRequest) returns (CreateResponse);
+  rpc Start(StartRequest) returns (StartResponse);
+  rpc Stop(StopRequest) returns (StopResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Run(RunRequest) returns (RunResponse);
+}
+
+message PullRequest {
+  string reference = 1;
+  string store_dir = 2;
+}
+
+message PullResponse {}
+
+message CreateRequest {
+  string id = 1;              // optional
+  string image = 2;
+  string command = 3;
+  repeated string args = 4;
+  string store_dir = 5;
+  uint64 memory_limit = 6;    // bytes, 0 = unlimited
+  double cpus = 7;
+}
+
+message CreateResponse {
+  string id = 1;
+}
+
+message StartRequest {
+  string id = 1;
+}
+
+message StartResponse {}
+
+message StopRequest {
+  string id = 1;
+}
+
+message StopResponse {}
+
+message DeleteRequest {
+  string id = 1;
+  bool force = 2;
+}
+
+message DeleteResponse {}
+
+message ListRequest {}
+
+message ContainerInfo {
+  string id = 1;
+  string image = 2;
+  string command = 3;
+  string status = 4;   // "Created", "Running", "Stopped"
+  int32 pid = 5;
+  string network_ip = 6;
+}
+
+message ListResponse {
+  repeated ContainerInfo containers = 1;
+}
+
+message RunRequest {
+  string id = 1;
+  string image = 2;
+  string command = 3;
+  repeated string args = 4;
+  string store_dir = 5;
+  uint64 memory_limit = 6;
+  double cpus = 7;
+  bool detach = 8;
+  bool rm = 9;
+}
+
+message RunResponse {
+  string id = 1;
+  int32 pid = 2;
+}

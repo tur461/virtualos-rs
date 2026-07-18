@@ -1,0 +1,4 @@
+// Re-export generated code
+pub mod virtualos {
+    tonic::include_proto!("virtualos");
+}
