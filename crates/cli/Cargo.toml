@@ -10,7 +10,9 @@ path = "src/main.rs"
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-engine = { path = "../engine" }
-network = { path = "../network" }
 nix = { workspace = true, features = ["mount", "sched", "hostname"] }
+# ------------ local deps ------------
+engine = { path = "../engine" }
+daemon = { path = "../daemon" }
+network = { path = "../network" }
 storage = { path = "../storage"}

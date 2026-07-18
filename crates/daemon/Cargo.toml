@@ -4,3 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = { workspace = true }
+tonic = "0.14.6"
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"]}
+tokio-stream = "0.1.18"
+# --------- local deps -----------
+proto = { path = "../proto" }
+engine = { path = "../engine" }
+storage = { path = "../storage" }
+cgroups = { path = "../cgroups" }
+network = { path = "../network" }

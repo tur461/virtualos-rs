@@ -27,7 +27,7 @@ cgroups-rs = "0.5.0"
 ctrlc = "3.5.2"
 futures = "0.3.32"
 hex = "0.4.3"
-nix = { version = "0.31.3", features = ["fs", "ioctl", "net", "poll", "process", "pthread", "ptrace", "resource", "signal"] }
+nix = { version = "0.31.3", features = ["fs", "ioctl", "net", "poll", "process", "pthread", "ptrace", "resource", "signal", "mount", "sched", "hostname"] }
 reqwest = { version = "0.13.4", default-features = false }
 serde = "1.0.228" 
 serde_json = "1.0.150"

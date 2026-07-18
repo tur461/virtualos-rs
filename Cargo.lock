@@ -280,6 +280,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "daemon",
  "engine",
  "network",
  "nix",
@@ -374,6 +375,17 @@ dependencies = [
 [[package]]
 name = "daemon"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cgroups",
+ "engine",
+ "network",
+ "proto",
+ "storage",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+]
 
 [[package]]
 name = "digest"
