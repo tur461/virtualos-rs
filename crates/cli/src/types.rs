@@ -46,8 +46,16 @@ pub enum Commands {
     },
     /// Stop a running container
     Stop { id: String },
-    /// Remove a container
-    Rm { id: String },
+    /// get logs from running container
+    Logs { id: String },
+    /// Remove a container (use -f to force)
+    #[command(alias = "rm")]
+    Rm {
+        id: String,
+        /// Force removal (stop first if running)
+        #[arg(short, long)]
+        force: bool,
+    },
     /// List containers
     Ps,
     /// Run a container (create + start, optionally foreground)
@@ -71,6 +79,13 @@ pub enum Commands {
         memory: Option<String>,
         #[arg(long)]
         cpus: Option<f64>,
+        /// Automatically remove the container when it exits (foreground only)
+        #[arg(long)]
+        rm: bool,
+        #[arg(short = 'i', long)]
+        interactive: bool, // not yet fully used; for future PTY
+        #[arg(short = 't', long)]
+        tty: bool,
     },
     /// Initialise host bridge and NAT (run once)
     NetworkInit,

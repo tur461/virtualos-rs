@@ -58,7 +58,18 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
             }
         }
 
-        Commands::Rm { id } => {
+        Commands::Logs { id: _ } => {
+            // let container = mgr.load_container(&id)?;
+            // println!("Container {} ({:?})", container.id, container.status);
+            println!("Logs not yet implemented.");
+        }
+
+        Commands::Rm { id, force } => {
+            // Stop if running, then delete
+            if force && mgr.is_container_running(&id) {
+                mgr.stop(&id)?;
+            }
+
             if let Err(e) = mgr.delete(&id) {
                 eprintln!("Remove error: {:?}", e);
                 process::exit(1);
@@ -82,6 +93,9 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
         },
 
         Commands::Run {
+            rm,
+            interactive: _, // ignore for now
+            tty: _,
             detach,
             id,
             image,
@@ -112,9 +126,15 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
             // Start it
             if let Err(e) = mgr.start(&container.id, detach) {
                 eprintln!("Run start error: {:?}", e);
-                // Cleanup the container we just created
-                let _ = mgr.delete(&container.id);
-                process::exit(1);
+            }
+
+            if !detach {
+                if rm {
+                    let _ = mgr.delete(&container.id);
+                } else {
+                    // Mark as stopped (the foreground run already did that if it succeeded)
+                    // If error, still try to set stopped state
+                }
             }
         }
         Commands::NetworkInit => {

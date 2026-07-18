@@ -413,4 +413,27 @@ impl ContainerManager {
         fs::write(path, json)?;
         Ok(())
     }
+
+    #[inline]
+    pub fn is_container_running(&self, id: &str) -> bool {
+        self.is_status(id, &ContainerStatus::Running)
+    }
+
+    #[inline]
+    pub fn has_container_stopped(&self, id: &str) -> bool {
+        self.is_status(id, &ContainerStatus::Stopped)
+    }
+
+    #[inline]
+    pub fn is_container_created(&self, id: &str) -> bool {
+        self.is_status(id, &ContainerStatus::Created)
+    }
+
+    #[inline]
+    fn is_status(&self, id: &str, status: &ContainerStatus) -> bool {
+        match self.load_container(id) {
+            Ok(c) => &c.status == status,
+            _ => false,
+        }
+    }
 }
