@@ -11,7 +11,7 @@ use std::{
     ffi::CString,
     fs::{self, OpenOptions},
     os::{
-        fd::{BorrowedFd, OwnedFd, RawFd},
+        fd::{BorrowedFd, RawFd},
         unix::fs::OpenOptionsExt,
     },
     path::{Path, PathBuf},
@@ -39,7 +39,8 @@ impl Child {
         let flags = (CloneFlags::CLONE_NEWPID
             | CloneFlags::CLONE_NEWUTS
             | CloneFlags::CLONE_NEWNS
-            | CloneFlags::CLONE_NEWCGROUP)
+            | CloneFlags::CLONE_NEWCGROUP
+            | CloneFlags::CLONE_NEWNET)
             .bits() as u64;
 
         // Prepare the cgroup directory and get a fd

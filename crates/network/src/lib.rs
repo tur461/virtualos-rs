@@ -121,7 +121,15 @@ pub fn setup_container_net(pid: u32, container_id: &str, container_ip: &str) -> 
     run_cmd_ns(
         &netns_path,
         "ip",
-        &["route", "add", "default", "via", GATEWAY],
+        &[
+            "route",
+            "add",
+            "default",
+            "via",
+            GATEWAY,
+            "dev",
+            &container_veth,
+        ],
     )?;
 
     Ok(())

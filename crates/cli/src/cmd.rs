@@ -116,28 +116,6 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
                 let _ = mgr.delete(&container.id);
                 process::exit(1);
             }
-            // if !detach {
-            //     // Foreground: attach to the container by waiting for its PID to exit
-            //     if let Some(pid) = container.pid {
-            //         let pid = nix::unistd::Pid::from_raw(pid);
-            //         loop {
-            //             match nix::sys::wait::waitpid(
-            //                 pid,
-            //                 Some(nix::sys::wait::WaitPidFlag::WUNTRACED),
-            //             ) {
-            //                 Ok(status) => {
-            //                     eprintln!("Container init process exited with {:?}", status);
-            //                     break;
-            //                 }
-            //                 Err(nix::Error::EINTR) => continue,
-            //                 Err(e) => {
-            //                     eprintln!("waitpid error: {}", e);
-            //                     process::exit(1);
-            //                 }
-            //             }
-            //         }
-            //     }
-            // }
         }
         Commands::NetworkInit => {
             network::init_network().context("Network init failed")?;
