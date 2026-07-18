@@ -153,9 +153,15 @@ fn run_cmd(cmd: &str, args: &[&str]) -> Result<()> {
 }
 
 fn run_cmd_ns(netns_path: &str, cmd: &str, args: &[&str]) -> Result<()> {
+    eprintln!("DEBUG: nsenter --net {} {} {:?}", netns_path, cmd, args);
+    if netns_path.is_empty() {
+        anyhow::bail!("empty netns path: {netns_path}");
+    }
+    if !std::path::Path::new(&netns_path).exists() {
+        anyhow::bail!("Network namespace file not found: {}", netns_path);
+    }
     let output = Command::new("nsenter")
-        .arg("--net")
-        .arg(netns_path)
+        .arg(format!("--net={}", netns_path))
         .arg(cmd)
         .args(args)
         .output()

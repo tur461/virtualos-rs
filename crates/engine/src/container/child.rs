@@ -11,7 +11,7 @@ use std::{
     ffi::CString,
     fs::{self, OpenOptions},
     os::{
-        fd::{BorrowedFd, RawFd},
+        fd::{BorrowedFd, OwnedFd, RawFd},
         unix::fs::OpenOptionsExt,
     },
     path::{Path, PathBuf},
@@ -54,6 +54,10 @@ impl Child {
 
         // use clone3 helper
         let child_pid = clone_into_cgroup(|| self.init(), flags, cg_fd)?;
+        // // Signal child to proceed
+        // nix::unistd::write(&tx, &[0])?;
+        // // tx will be dropped, closing the write end.
+        // drop(tx);
 
         // Note: The child function must not return.
         Ok(child_pid)
@@ -191,7 +195,13 @@ impl Child {
             // SAFETY: fd is valid for the duration of this scope.
             let borrowed = unsafe { BorrowedFd::borrow_raw(fd) };
 
-            let _ = nix::unistd::read(borrowed, &mut buf);
+            // Block until parent writes a byte or closes the write end.
+            eprintln!(
+                "ready_fd::read | will Block until parent writes a byte or closes the write end."
+            );
+            let n = nix::unistd::read(borrowed, &mut buf);
+            // Close our copy of the read end.
+            eprintln!("ready_fd::read | read {n:?} B closing..");
             let _ = nix::unistd::close(fd);
         }
 

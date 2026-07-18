@@ -8,7 +8,7 @@ use super::types::Child;
 use nix::{
     sys::{
         signal::{Signal, kill},
-        wait::{WaitPidFlag, waitpid},
+        wait::{WaitPidFlag, WaitStatus, waitpid},
     },
     unistd::{Pid, pipe},
 };
@@ -18,7 +18,11 @@ use std::{
     net::Ipv4Addr,
     os::fd::AsRawFd,
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
@@ -158,19 +162,16 @@ impl ContainerManager {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("Missing rootfs path"))?
             .to_str()
-            .unwrap()
+            .ok_or_else(|| anyhow::anyhow!("rootfs path not valid UTF-8"))?
             .to_owned();
         let cmd = container.command.clone();
         let args = container.args.clone();
 
-        let (rx, tx) = pipe()?; // rx is read end, tx is write end
+        let (rx, tx) = pipe()?;
         let ready_fd = rx.as_raw_fd();
-        // Build the child configuration
-
         let child = Child::new(&rootfs, &cmd, &args, is_detach, ready_fd);
-        // Close our copy of the read end so that if we crash, child sees EOF
-        drop(rx);
-        // Apply cgroup limits if any are set
+
+        // Apply cgroup limits (creates cgroup directory, sets limits)
         if container.memory_limit.is_some() || container.cpu_limit.is_some() {
             let cg_path = apply_cgroup_limits(
                 &self.cgroup_parent,
@@ -180,31 +181,90 @@ impl ContainerManager {
                     cpus: container.cpu_limit,
                 },
             )?;
-
             container.cgroup_path = Some(cg_path);
         }
+
         let child_pid = child
             .run(&self.cgroup_parent.join(&container.id))
             .context("Failed to start container process")?;
 
-        // eprintln!(
-        //     "debug: child cgroup = {}",
-        //     std::fs::read_to_string(format!("/proc/{}/cgroup", child_pid.as_raw()))
-        //         .unwrap_or_default()
-        // );
-        // Set up network if the container has an IP
-        if let Some(ref ip) = container.network_ip {
-            network::setup_container_net(child_pid.as_raw() as u32, &container.id, ip)?;
-        }
+        if child_pid.as_raw() > 0 {
+            // Wrap the fallible part in a closure, or use a guard.
+            let result = (|| -> Result<()> {
+                if let Some(ref ip) = container.network_ip {
+                    network::init_network()?;
+                    network::setup_container_net(child_pid.as_raw() as u32, &container.id, ip)?;
+                }
+                Ok(())
+            })();
 
+            if let Err(e) = result {
+                // Kill the child and wait for it to avoid zombies/hangs.
+                let _ = kill(Pid::from_raw(child_pid.as_raw()), Signal::SIGKILL);
+                let _ = waitpid(Pid::from_raw(child_pid.as_raw()), None);
+                drop(rx); // ensure pipe is cleaned up
+                return Err(e);
+            }
+
+            // Only now is it safe to unblock the child.
+            nix::unistd::write(&tx, &[0])?;
+            drop(tx);
+            drop(rx);
+        }
         // Signal child to proceed
-        nix::unistd::write(&tx, &[0])?;
-        // tx will be dropped, closing the write end.
-        drop(tx);
-        // Update container state
+
+        // Container is now running – save that fact immediately
         container.status = ContainerStatus::Running;
         container.pid = Some(child_pid.as_raw());
         self.save_container(&container)?;
+
+        if !is_detach {
+            // ----- foreground branch (the snippet goes here) -----
+            let running = Arc::new(AtomicBool::new(true));
+            let r = running.clone();
+            let child_raw = child_pid.as_raw();
+            ctrlc::set_handler(move || {
+                r.store(false, Ordering::SeqCst);
+                let _ = kill(Pid::from_raw(child_raw), Signal::SIGTERM);
+            })
+            .expect("Error setting Ctrl-C handler");
+
+            // Wait for child to exit
+            loop {
+                match waitpid(child_pid, Some(WaitPidFlag::WNOHANG)) {
+                    Ok(WaitStatus::Exited(pid, code)) => {
+                        println!("Container {} exited with code {}", pid, code);
+                        break;
+                    }
+                    Ok(WaitStatus::Signaled(pid, sig, _)) => {
+                        println!("Container {} killed by signal {:?}", pid, sig);
+                        break;
+                    }
+                    Ok(_) => {}
+                    Err(nix::Error::ECHILD) => break,
+                    Err(e) => {
+                        eprintln!("waitpid error: {}", e);
+                        break;
+                    }
+                }
+                if !running.load(Ordering::SeqCst) {
+                    // Ctrl‑C pressed – block until the child dies
+                    let _ = waitpid(child_pid, None);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+
+            // Teardown network for this foreground container
+            if container.network_ip.is_some() {
+                let _ = network::teardown_container_net(id);
+            }
+
+            // Mark as stopped now that it has exited
+            container.status = ContainerStatus::Stopped;
+            container.pid = None;
+            self.save_container(&container)?;
+        }
 
         println!("Container {} started with PID {}", id, child_pid);
         Ok(())
