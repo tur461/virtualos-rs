@@ -2,7 +2,7 @@ mod cmd;
 mod helpers;
 mod types;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use daemon::client::Client;
 
@@ -13,6 +13,10 @@ use crate::cmd::{run_local, run_with_client};
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    logging::init_logging(true, cli.log_file.clone(), cli.log_network.as_deref())
+        .context("Logging init failed")?;
+
     match Client::connect().await? {
         Some(mut client) => run_with_client(cli, &mut client).await,
         None => run_local(cli),

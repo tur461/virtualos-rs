@@ -9,6 +9,13 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Commands,
+
+    /// Enable structured log output to a file (rotating)
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
+    /// Send structured logs to a TCP endpoint (e.g., 127.0.0.1:5140)
+    #[arg(long)]
+    pub log_network: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
