@@ -1,5 +1,3 @@
-// engine/src/lib.rs (after existing pull_image)
-
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use storage::Store;

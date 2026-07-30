@@ -11,8 +11,9 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 nix = { workspace = true, features = ["mount", "sched", "hostname"] }
+tokio = { workspace = true, features = ["full"] }
 # ------------ local deps ------------
 engine = { path = "../engine" }
 daemon = { path = "../daemon" }
 network = { path = "../network" }
-storage = { path = "../storage"}
+storage = { path = "../storage" }

@@ -1,14 +1,120 @@
 use anyhow::{Context, Result};
+use daemon::client::Client;
 use engine::{ContainerManager, ResourceLimits};
 use std::process;
 use storage::Store;
 
-use crate::helpers::parse_memory;
+use crate::{helpers::parse_memory, types::Cli};
 
 use super::types::Commands;
 
-pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
-    match cmd {
+pub async fn run_with_client(cli: Cli, client: &mut Client) -> Result<()> {
+    match cli.command {
+        Commands::Pull {
+            reference,
+            store_dir,
+        } => {
+            client
+                .pull(&reference, &store_dir.to_string_lossy())
+                .await?;
+            println!("Pull succeeded.");
+        }
+        Commands::Create {
+            id,
+            image,
+            command,
+            args,
+            store_dir,
+            memory,
+            cpus,
+        } => {
+            let mem = memory.and_then(|s| parse_memory(&s).ok());
+            let id = client
+                .create(
+                    id.as_deref(),
+                    &image,
+                    &command,
+                    args.iter().map(|s| s.as_str()).collect(),
+                    &store_dir.to_string_lossy(),
+                    mem,
+                    cpus,
+                )
+                .await?;
+            println!("Container {} created.", id);
+        }
+        Commands::Start { id, detach: _ } => {
+            client.start(&id).await?;
+            println!("Container {} started.", id);
+        }
+        Commands::Stop { id } => {
+            client.stop(&id).await?;
+            println!("Container {} stopped.", id);
+        }
+        Commands::Rm { id, force } => {
+            client.delete(&id, force).await?;
+            println!("Container {} removed.", id);
+        }
+        Commands::Ps => {
+            let containers = client.list().await?;
+            if containers.is_empty() {
+                println!("No containers.");
+            } else {
+                for c in containers {
+                    println!(
+                        "{:<12} {:<10} {:<20} PID={:?} IP={}",
+                        c.id, c.status, c.image, c.pid, c.network_ip
+                    );
+                }
+            }
+        }
+        Commands::Logs { id } => {
+            // gRPC logs would require streaming; placeholder
+            println!("Logs for {}: (not implemented via daemon)", id);
+        }
+        Commands::Run {
+            detach,
+            rm,
+            id: _,
+            interactive: _,
+            tty: _,
+            image,
+            command,
+            args,
+            store_dir,
+            memory,
+            cpus,
+        } => {
+            if !detach {
+                anyhow::bail!(
+                    "Foreground run is not supported via daemon. Please run directly (unset daemon socket)."
+                );
+            }
+            let mem_limit = memory.and_then(|s| parse_memory(&s).ok());
+            let id = client
+                .run(
+                    None,
+                    &image,
+                    &command,
+                    args.iter().map(|s| s.as_str()).collect(),
+                    &store_dir.to_string_lossy(),
+                    mem_limit,
+                    cpus,
+                    true, // detach
+                    rm,
+                )
+                .await?;
+            println!("{}", id);
+        }
+        Commands::NetworkInit => {
+            anyhow::bail!("network-init must be executed locally (as root).");
+        }
+    }
+    Ok(())
+}
+
+pub fn run_local(cli: Cli) -> Result<()> {
+    let mgr = ContainerManager::new(&cli.base_dir);
+    match cli.command {
         Commands::Pull {
             reference,
             store_dir,
@@ -94,10 +200,10 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
 
         Commands::Run {
             rm,
+            id,
             interactive: _, // ignore for now
             tty: _,
             detach,
-            id,
             image,
             command,
             args,
@@ -139,7 +245,7 @@ pub fn handle_cmd(cmd: Commands, mgr: ContainerManager) -> Result<()> {
         }
         Commands::NetworkInit => {
             network::init_network().context("Network init failed")?;
-            eprintln!("Bridge docklet0 created and NAT rule added.");
+            eprintln!("Bridge virtualos0 created and NAT rule added.");
         }
     }
     Ok(())

@@ -7,7 +7,7 @@ use daemon::MyVirtualOs;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let socket_path = "/var/run/docklet.sock";
+    let socket_path = "/var/run/virtualos.sock";
 
     let _ = std::fs::remove_file(socket_path);
 

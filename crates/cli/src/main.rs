@@ -2,17 +2,19 @@ mod cmd;
 mod helpers;
 mod types;
 
+use anyhow::Result;
 use clap::Parser;
-use engine::ContainerManager;
+use daemon::client::Client;
 
 use types::Cli;
 
-use crate::cmd::handle_cmd;
+use crate::cmd::{run_local, run_with_client};
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let mgr = ContainerManager::new(&cli.base_dir);
-    if let Err(e) = handle_cmd(cli.command, mgr) {
-        eprintln!("Error running the command: {e}");
+    match Client::connect().await? {
+        Some(mut client) => run_with_client(cli, &mut client).await,
+        None => run_local(cli),
     }
 }

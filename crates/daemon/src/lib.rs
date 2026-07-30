@@ -20,7 +20,7 @@ impl MyVirtualOs {
 impl Default for MyVirtualOs {
     fn default() -> Self {
         Self {
-            base_dir: "/var/lib/docklet".into(),
+            base_dir: "/var/lib/virtualos".into(),
         }
     }
 }

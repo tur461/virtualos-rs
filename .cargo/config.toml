@@ -1,0 +1,12 @@
+[build]
+target = "x86_64-unknown-linux-gnu"
+
+[target.x86_64-unknown-linux-gnu]
+# Override the default linker with the one provided by the cross toolchain.
+# This is only used if you ever build natively (not with `cross`),
+# but it's harmless to define.
+linker = "x86_64-linux-gnu-gcc"
+
+# The `cross` command automatically sets the proper environment,
+# so you don't need to change anything here for `cross build`.
+# We leave the target configuration for completeness.

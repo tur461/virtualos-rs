@@ -9,12 +9,12 @@ pub struct Client {
 
 impl Client {
     pub async fn connect() -> Result<Option<Self>> {
-        let socket = "/var/run/docklet.sock";
+        let socket = "/var/run/virtualos.sock";
         // Check if socket exists
         if !std::path::Path::new(socket).exists() {
             return Ok(None);
         }
-        let channel = Endpoint::try_from("unix:///var/run/docklet.sock")?
+        let channel = Endpoint::try_from("unix:///var/run/virtualos.sock")?
             .connect()
             .await?;
         let client = VirtualOsClient::new(channel);
@@ -31,6 +31,7 @@ impl Client {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &mut self,
         id: Option<&str>,
@@ -81,6 +82,7 @@ impl Client {
         Ok(resp.into_inner().containers)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn run(
         &mut self,
         id: Option<&str>,

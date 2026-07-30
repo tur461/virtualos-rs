@@ -1,5 +1,5 @@
 #!/bin/bash
-# Enable cgroup v2 controllers for docklet (idempotent)
+# Enable cgroup v2 controllers for virtualos (idempotent)
 CGROUP_ROOT="/sys/fs/cgroup"
 SUBCTRL="$CGROUP_ROOT/cgroup.subtree_control"
 REQUIRED="cpu memory pids"

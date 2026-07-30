@@ -37,21 +37,21 @@ impl ContainerManager {
         //     "cgroup delegation missing: ensure cgroup v2 is available and controllers are enabled",
         // );
         // .unwrap_or_else(|_| PathBuf::from("/sys/fs/cgroup"));
-        // Ensure the docklet subdirectory exists inside that parent.
-        // let docklet_cgroup = cgroup_parent.join("docklet");
+        // Ensure the virtualos subdirectory exists inside that parent.
+        // let virtualos_cgroup = cgroup_parent.join("virtualos");
 
-        let docklet_cgroup = PathBuf::from("/sys/fs/cgroup/docklet");
+        let virtualos_cgroup = PathBuf::from("/sys/fs/cgroup/virtualos");
         // Ensure we have a fresh directory so that controllers are inherited
         // from the detected parent.
-        // if docklet_cgroup.exists() {
-        //     let _ = std::fs::remove_dir(&docklet_cgroup);
+        // if virtualos_cgroup.exists() {
+        //     let _ = std::fs::remove_dir(&virtualos_cgroup);
         // }
-        std::fs::create_dir_all(&docklet_cgroup)
-            .expect("Failed to create docklet cgroup directory");
+        std::fs::create_dir_all(&virtualos_cgroup)
+            .expect("Failed to create virtualos cgroup directory");
 
         ContainerManager {
             base_dir,
-            cgroup_parent: docklet_cgroup,
+            cgroup_parent: virtualos_cgroup,
         }
     }
 

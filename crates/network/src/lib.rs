@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
-const BRIDGE_NAME: &str = "docklet0";
+const BRIDGE_NAME: &str = "virtualos0";
 const SUBNET: &str = "10.0.0.0/24";
 const GATEWAY: &str = "10.0.0.1";
 

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "virtualos_rs")]
 pub struct Cli {
-    #[arg(short, long, default_value = "/var/lib/docklet")]
+    #[arg(short, long, default_value = "/var/lib/virtualos")]
     pub base_dir: PathBuf,
 
     #[command(subcommand)]

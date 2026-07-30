@@ -8,7 +8,7 @@ pub struct Cgroup {
 }
 
 impl Cgroup {
-    /// Create a new cgroup under the given parent path (e.g., "/sys/fs/cgroup/docklet").
+    /// Create a new cgroup under the given parent path (e.g., "/sys/fs/cgroup/virtualos").
     /// The container id is used as the cgroup name.
     pub fn new(parent: &Path, container_id: &str) -> Result<Self> {
         let path = parent.join(container_id);
