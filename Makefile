@@ -1,53 +1,205 @@
-# Workspace name (used for tagging, etc.)
-PROJECT   := vitualos_rs
+# ============================================================
+# VirtualOS-RS Build
+# ============================================================
 
-# Paths
-BPF_CRATE := ebpf
-BPF_TARGET := bpfel-unknown-none
+PROJECT := virtualos_rs
+
+# Usage:
+#   make
+#   make BUILD_PROFILE=release
+#
+# Supported:
+#   debug
+#   release
+BUILD_PROFILE ?= debug
+
+# Map project profile names to Cargo profile names.
+ifeq ($(BUILD_PROFILE),debug)
+CARGO_PROFILE := dev
+else ifeq ($(BUILD_PROFILE),release)
+CARGO_PROFILE := release
+else
+$(error BUILD_PROFILE must be 'debug' or 'release')
+endif
+
+# ------------------------------------------------------------
+# Targets
+# ------------------------------------------------------------
+
 LINUX_TARGET := x86_64-unknown-linux-gnu
-OUT_DIR   := target/$(LINUX_TARGET)/release
+BPF_TARGET   := bpfel-unknown-none
+BPF_CRATE    := ebpf_probes
 
-# Default: build the Linux release binaries
+LINUX_OUT_DIR := target/$(LINUX_TARGET)/$(BUILD_PROFILE)
+BPF_OUT_DIR   := target/$(BPF_TARGET)/$(BUILD_PROFILE)
+
+# ------------------------------------------------------------
+# Tools
+# ------------------------------------------------------------
+
+CARGO      := cargo
+RUSTC      := rustc
+BPF_LINKER := bpf-linker
+
+# ------------------------------------------------------------
+# Default
+# ------------------------------------------------------------
+
 .PHONY: all
-all: linux-bpf linux
+all: build
 
-# --- eBPF bytecode ---
-# The BPF object can be built directly on macOS because it targets a no‑std environment.
-.PHONY: linux-bpf
-linux-bpf:
-	cargo +nightly build -p $(BPF_CRATE) --target $(BPF_TARGET) -Z build-std=core
-	@echo "eBPF object ready at target/$(BPF_TARGET)/debug/$(BPF_CRATE).o"
+# ------------------------------------------------------------
+# Check
+# ------------------------------------------------------------
 
-# --- Linux binaries ---
+.PHONY: check
+check:
+	@echo "== Rust =="
+	@$(RUSTC) --version
+	@$(CARGO) --version
+	@echo
+	@echo "== Nightly Rust =="
+	@$(RUSTC) +nightly --version
+	@echo
+	@echo "== bpf-linker =="
+	@command -v $(BPF_LINKER)
+	@$(BPF_LINKER) --version
+	@echo
+	@echo "== BPF target =="
+	@$(RUSTC) +nightly --print target-list | grep -E '^bpf(el|eb)-unknown-none$$'
+	@echo
+	@echo "== Build profile =="
+	@echo "Project profile : $(BUILD_PROFILE)"
+	@echo "Cargo profile   : $(CARGO_PROFILE)"
+
+# ------------------------------------------------------------
+# eBPF
+# ------------------------------------------------------------
+
+.PHONY: bpf
+bpf:
+	@echo "Building eBPF: $(BPF_CRATE)"
+	$(CARGO) +nightly build \
+		-p $(BPF_CRATE) \
+		--target $(BPF_TARGET) \
+		--profile $(CARGO_PROFILE) \
+		-Z build-std=core \
+		-Z build-std-features=compiler-builtins-mem
+
+	@echo
+	@echo "eBPF output:"
+	@find $(BPF_OUT_DIR) -maxdepth 1 -type f \
+		-name '$(BPF_CRATE)*' \
+		-print
+
+# ------------------------------------------------------------
+# Linux userspace
+# ------------------------------------------------------------
+
 .PHONY: linux
 linux:
-	cross build --target $(LINUX_TARGET) --release -p cli -p daemon
-	@echo "Linux binaries: $(OUT_DIR)/virtualos and $(OUT_DIR)/virtualos-daemon"
+	@echo "Building Linux userspace"
 
-# --- Clean everything ---
+	$(CARGO) build \
+		--target $(LINUX_TARGET) \
+		--profile $(CARGO_PROFILE) \
+		-p cgroups \
+		-p cli \
+		-p daemon \
+		-p ebpf \
+		-p engine \
+		-p logging \
+		-p monitoring \
+		-p network \
+		-p proto \
+		-p storage \
+		-p virtualization
+
+	@echo
+	@echo "Linux output:"
+	@find $(LINUX_OUT_DIR) -maxdepth 1 -type f \
+		\( -name 'virtualos*' -o -name 'daemon*' -o -name 'lib*' \) \
+		-print
+
+# ------------------------------------------------------------
+# Everything
+# ------------------------------------------------------------
+
+.PHONY: build
+build: bpf linux
+
+# ------------------------------------------------------------
+# Release
+# ------------------------------------------------------------
+
+.PHONY: release
+release:
+	$(MAKE) BUILD_PROFILE=release build
+
+# ------------------------------------------------------------
+# Debug
+# ------------------------------------------------------------
+
+.PHONY: debug
+debug:
+	$(MAKE) BUILD_PROFILE=debug build
+
+# ------------------------------------------------------------
+# Clean
+# ------------------------------------------------------------
+
 .PHONY: clean
 clean:
-	cargo clean
-	cross clean
+	$(CARGO) clean
 
-# --- Run tests on the Linux target (requires cross) ---
+# ------------------------------------------------------------
+# Test
+# ------------------------------------------------------------
+
 .PHONY: test
 test:
-	cross test --target $(LINUX_TARGET) --workspace
+	$(CARGO) test \
+		--target $(LINUX_TARGET) \
+		--workspace
 
-# --- Create a tarball of the binaries for deployment ---
+# ------------------------------------------------------------
+# Distribution
+# ------------------------------------------------------------
+
 .PHONY: dist
 dist: linux
-	tar -czf $(PROJECT)-linux-amd64.tar.gz -C $(OUT_DIR) vitualos virtualos-daemon
-	@echo "Created $(PROJECT)-linux-amd64.tar.gz"
+	@mkdir -p dist
 
-# --- Help ---
+	tar -czf \
+		$(PROJECT)-linux-amd64.tar.gz \
+		-C $(LINUX_OUT_DIR) \
+		virtualos \
+		virtualos-daemon
+
+	@echo
+	@echo "Created:"
+	@echo "  dist/$(PROJECT)-linux-amd64.tar.gz"
+
+# ------------------------------------------------------------
+# Help
+# ------------------------------------------------------------
+
 .PHONY: help
 help:
+	@echo "VirtualOS-RS"
+	@echo
 	@echo "Usage:"
-	@echo "  make all          Build eBPF and Linux binaries"
-	@echo "  make linux        Build only the Linux binaries (requires eBPF object built first)"
-	@echo "  make linux-bpf    Build only the eBPF bytecode"
-	@echo "  make clean        Clean all build artifacts"
-	@echo "  make test         Run tests on the Linux target"
-	@echo "  make dist         Create a release tarball"
+	@echo "  make                    Build debug eBPF + Linux"
+	@echo "  make debug              Build debug"
+	@echo "  make release            Build release"
+	@echo "  make bpf                Build eBPF only"
+	@echo "  make linux              Build Linux userspace only"
+	@echo "  make test               Run tests"
+	@echo "  make clean              Clean target/"
+	@echo "  make dist               Create Linux distribution archive"
+	@echo "  make check              Check build environment"
+	@echo
+	@echo "Explicit profile:"
+	@echo "  make BUILD_PROFILE=debug"
+	@echo "  make BUILD_PROFILE=release"
+

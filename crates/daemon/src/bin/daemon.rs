@@ -1,6 +1,6 @@
 use clap::Parser;
 use proto::virtualos::virtual_os_server::VirtualOsServer;
-use std::path::PathBuf;
+use std::{net::SocketAddr, path::PathBuf};
 use tokio::net::UnixListener;
 use tokio_stream::wrappers::UnixListenerStream;
 use tonic::transport::Server;

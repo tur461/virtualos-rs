@@ -13,6 +13,7 @@ members = [
   "crates/monitoring",
   "crates/logging",
   "crates/ebpf",
+  "crates/ebpf/ebpf-probes",
   "crates/virtualization",
   "crates/daemon",
   "crates/proto",

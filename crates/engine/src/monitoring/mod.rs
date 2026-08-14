@@ -1,34 +1,34 @@
+#![allow(dead_code)]
 use lazy_static::lazy_static;
 use prometheus::{
-    CounterVec, GaugeVec, HistogramVec, Opts, Registry, register_counter_vec, register_gauge_vec,
+    CounterVec, Gauge, HistogramVec, Registry, register_counter_vec, register_gauge,
     register_histogram_vec,
 };
 
 lazy_static! {
     pub static ref REGISTRY: Registry = Registry::new();
 
-    static ref CONTAINERS_RUNNING: GaugeVec = register_gauge_vec!(
+    pub static ref CONTAINERS_RUNNING: Gauge = register_gauge!(
         "virtualos_containers_running",
-        "Number of containers currently in running state",
-        &[],
+        "Number of containers currently in running state"
     )
     .unwrap();
 
-    static ref CONTAINERS_CREATED: CounterVec = register_counter_vec!(
+    pub static ref CONTAINERS_CREATED: CounterVec = register_counter_vec!(
         "virtualos_containers_created_total",
         "Total number of containers created",
         &[],
     )
     .unwrap();
 
-    static ref CONTAINER_STARTS: CounterVec = register_counter_vec!(
+    pub static ref CONTAINER_STARTS: CounterVec = register_counter_vec!(
         "virtualos_container_starts_total",
         "Total number of container start operations",
         &["status"], // success/failure
     )
     .unwrap();
 
-    static ref CONTAINER_START_DURATION: HistogramVec = register_histogram_vec!(
+    pub static ref CONTAINER_START_DURATION: HistogramVec = register_histogram_vec!(
         "virtualos_container_starts_duration_seconds",
         "Time spent starting a container",
         &["status"],
@@ -36,7 +36,7 @@ lazy_static! {
     )
     .unwrap();
 
-    static ref ENGINE_ERRORS: CounterVec = register_counter_vec!(
+    pub static ref ENGINE_ERRORS: CounterVec = register_counter_vec!(
         "virtualos_errors_total",
         "Total number of errors",
         &["operation"],

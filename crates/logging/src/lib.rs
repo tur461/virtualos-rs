@@ -116,6 +116,7 @@ fn json_tcp_layer(addr: &str) -> Result<(impl Layer<Registry>, TcpWriterGuard)> 
     ))
 }
 
+#[allow(dead_code)]
 struct TcpWriterGuard {
     handle: Option<thread::JoinHandle<()>>,
 }

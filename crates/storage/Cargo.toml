@@ -9,4 +9,5 @@ hex = { workspace = true }
 nix = { workspace = true }
 sha2 = { workspace = true }
 tar = { workspace = true }
+tracing = { workspace = true }
 walkdir = { workspace = true }

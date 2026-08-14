@@ -8,4 +8,4 @@ anyhow = { workspace = true }
 axum = { workspace = true }
 prometheus = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
-tracing = "0.1"
+tracing = { workspace = true }

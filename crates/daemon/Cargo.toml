@@ -9,6 +9,7 @@ clap = { workspace = true, features = ["derive"] }
 tonic = "0.14.6"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
 tokio-stream = "0.1.18"
+tracing = { workspace = true }
 
 # --------- local deps -----------
 engine = { path = "../engine" }

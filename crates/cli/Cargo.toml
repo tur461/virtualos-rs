@@ -12,6 +12,8 @@ anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 nix = { workspace = true, features = ["mount", "sched", "hostname"] }
 tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+
 # ------------ local deps ------------
 engine = { path = "../engine" }
 daemon = { path = "../daemon" }

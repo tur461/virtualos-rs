@@ -3,4 +3,12 @@ name = "ebpf"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib"]   # we need a shared object that aya can load
+
 [dependencies]
+anyhow = { workspace = true }
+aya = "0.14.0"
+aya-log = "0.3.0"
+tokio = { workspace = true, features = ["rt", "sync", "macros"] }
+tracing = { workspace = true }

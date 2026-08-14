@@ -25,4 +25,5 @@ storage = { path = "../storage" }
 tar = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
+tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

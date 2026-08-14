@@ -2,7 +2,13 @@ use super::{
     helpers::apply_cgroup_limits,
     types::{Container, ContainerManager, ContainerStatus, ResourceLimits},
 };
-use crate::mount::prepare_rootfs;
+use crate::{
+    monitoring::{
+        CONTAINER_START_DURATION, CONTAINER_STARTS, CONTAINERS_CREATED, CONTAINERS_RUNNING,
+        ENGINE_ERRORS,
+    },
+    mount::prepare_rootfs,
+};
 
 use super::types::Child;
 use nix::{
@@ -12,6 +18,7 @@ use nix::{
     },
     unistd::{Pid, pipe},
 };
+use tracing::info;
 
 use std::{
     fs::{self},
@@ -49,10 +56,26 @@ impl ContainerManager {
         std::fs::create_dir_all(&virtualos_cgroup)
             .expect("Failed to create virtualos cgroup directory");
 
-        ContainerManager {
+        let mgr = ContainerManager {
             base_dir,
             cgroup_parent: virtualos_cgroup,
-        }
+        };
+
+        mgr.sync_running_gauge();
+
+        mgr
+    }
+
+    pub fn sync_running_gauge(&self) {
+        let running = self
+            .list()
+            .map(|cs| {
+                cs.iter()
+                    .filter(|c| c.status == ContainerStatus::Running)
+                    .count()
+            })
+            .unwrap_or(0);
+        CONTAINERS_RUNNING.set(running as f64);
     }
 
     /// Allocate the next available IP in the 10.0.0.0/24 subnet.
@@ -102,56 +125,63 @@ impl ContainerManager {
         store: &Store,
         limits: ResourceLimits,
     ) -> Result<Container> {
-        let id = id.unwrap_or_else(|| {
-            Uuid::new_v4()
-                .to_string()
-                .split('-')
-                .next()
+        let result = (|| -> Result<Container> {
+            let id = id.unwrap_or_else(|| {
+                Uuid::new_v4()
+                    .to_string()
+                    .split('-')
+                    .next()
+                    .unwrap()
+                    .to_string()
+            });
+            let container_dir = self.container_dir(&id);
+            if container_dir.exists() {
+                anyhow::bail!("Container {} already exists", id);
+            }
+            fs::create_dir_all(&container_dir)?;
+
+            let mounted = prepare_rootfs(image, store)?;
+            let (rootfs_path, temp_dir) = mounted.detach();
+
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .to_string()
-        });
-        let container_dir = self.container_dir(&id);
-        if container_dir.exists() {
-            anyhow::bail!("Container {} already exists", id);
+                .as_secs()
+                .to_string();
+            let ip = self.allocate_ip()?;
+            let container = Container {
+                id: id.clone(),
+                image: image.to_string(),
+                command: command.to_string(),
+                args,
+                status: ContainerStatus::Created,
+                pid: None,
+                created_at: now,
+                rootfs_path: Some(rootfs_path),
+                temp_dir: Some(temp_dir),
+                memory_limit: limits.memory,
+                cpu_limit: limits.cpus,
+                cgroup_path: None,
+                network_ip: Some(ip),
+            };
+
+            let json = serde_json::to_string_pretty(&container)?;
+            fs::write(self.state_path(&id), json)?;
+
+            CONTAINERS_CREATED.with_label_values(&["success"]).inc();
+            info!("Container {} created", id);
+            Ok(container)
+        })();
+
+        if result.is_err() {
+            ENGINE_ERRORS.with_label_values(&["create"]).inc();
         }
-        fs::create_dir_all(&container_dir)?;
-
-        let mounted = prepare_rootfs(image, store)?;
-        // Detach to keep overlay alive after MountedRoot is dropped.
-        let (rootfs_path, temp_dir) = mounted.detach();
-
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs()
-            .to_string();
-        let ip = self.allocate_ip()?;
-        let container = Container {
-            id: id.clone(),
-            image: image.to_string(),
-            command: command.to_string(),
-            args,
-            status: ContainerStatus::Created,
-            pid: None,
-            created_at: now,
-            rootfs_path: Some(rootfs_path),
-            temp_dir: Some(temp_dir),
-            memory_limit: limits.memory,
-            cpu_limit: limits.cpus,
-            cgroup_path: None,
-            network_ip: Some(ip),
-        };
-
-        // Save state
-        let json = serde_json::to_string_pretty(&container)?;
-        fs::write(self.state_path(&id), json)?;
-
-        println!("Container {} created", id);
-        Ok(container)
+        result
     }
 
     /// Start a container that is in Created state.
     pub fn start(&self, id: &str, is_detach: bool) -> Result<()> {
+        let start_instant = std::time::Instant::now();
         let mut container = self.load_container(id)?;
         if container.status != ContainerStatus::Created {
             anyhow::bail!("Container {} is not in Created state", id);
@@ -203,6 +233,14 @@ impl ContainerManager {
                 let _ = kill(Pid::from_raw(child_pid.as_raw()), Signal::SIGKILL);
                 let _ = waitpid(Pid::from_raw(child_pid.as_raw()), None);
                 drop(rx); // ensure pipe is cleaned up
+                // Record failure metrics
+                ENGINE_ERRORS.with_label_values(&["start"]).inc();
+                CONTAINER_STARTS.with_label_values(&["failure"]).inc();
+                let duration = start_instant.elapsed().as_secs_f64();
+                CONTAINER_START_DURATION
+                    .with_label_values(&["failure"])
+                    .observe(duration);
+
                 return Err(e);
             }
 
@@ -217,6 +255,14 @@ impl ContainerManager {
         container.status = ContainerStatus::Running;
         container.pid = Some(child_pid.as_raw());
         self.save_container(&container)?;
+
+        // Record success metrics
+        CONTAINERS_RUNNING.inc();
+        CONTAINER_STARTS.with_label_values(&["success"]).inc();
+        let duration = start_instant.elapsed().as_secs_f64();
+        CONTAINER_START_DURATION
+            .with_label_values(&["success"])
+            .observe(duration);
 
         if !is_detach {
             // ----- foreground branch (the snippet goes here) -----
@@ -254,6 +300,8 @@ impl ContainerManager {
                 }
                 std::thread::sleep(Duration::from_millis(100));
             }
+
+            CONTAINERS_RUNNING.dec();
 
             // Teardown network for this foreground container
             if container.network_ip.is_some() {
@@ -321,48 +369,56 @@ impl ContainerManager {
         }
 
         self.save_container(&container)?;
-        println!("Container {} stopped", id);
+        // Metrics: decrement running gauge
+        CONTAINERS_RUNNING.dec();
+        info!("Container {} stopped", id);
         Ok(())
     }
 
     /// Delete a container. Stop it first if running, then remove overlay and state.
     pub fn delete(&self, id: &str) -> Result<()> {
-        let container = self.load_container(id)?;
-        if container.status == ContainerStatus::Running {
-            self.stop(id)?;
-        }
-        // Unmount rootfs if still mounted
-        if let Some(ref rootfs) = container.rootfs_path
-            && rootfs.exists()
-        {
-            // Try to unmount (ignore error if already unmounted)
-            let _ = Store::unmount(rootfs);
-        }
-        // Remove temp directory (upper/work)
-        if let Some(ref temp) = container.temp_dir
-            && temp.exists()
-        {
-            fs::remove_dir_all(temp).ok();
-        }
+        let result = (|| -> Result<()> {
+            let container = self.load_container(id)?;
+            if container.status == ContainerStatus::Running {
+                self.stop(id)?;
+            }
+            // Unmount rootfs if still mounted
+            if let Some(ref rootfs) = container.rootfs_path
+                && rootfs.exists()
+            {
+                // Try to unmount (ignore error if already unmounted)
+                let _ = Store::unmount(rootfs);
+            }
+            // Remove temp directory (upper/work)
+            if let Some(ref temp) = container.temp_dir
+                && temp.exists()
+            {
+                fs::remove_dir_all(temp).ok();
+            }
 
-        if let Some(ref cg_path) = container.cgroup_path
-            && let Ok(cg) = cgroups::Cgroup::from_path(cg_path)
-        {
-            let _ = cg.delete();
-        }
+            if let Some(ref cg_path) = container.cgroup_path
+                && let Ok(cg) = cgroups::Cgroup::from_path(cg_path)
+            {
+                let _ = cg.delete();
+            }
 
-        if let Some(_ref_ip) = &container.network_ip {
-            let _ = network::teardown_container_net(&container.id);
-            // we could keep the IP, but it's freed by teardown; no need to mark as None.
-        }
+            if let Some(_ref_ip) = &container.network_ip {
+                let _ = network::teardown_container_net(&container.id);
+                // we could keep the IP, but it's freed by teardown; no need to mark as None.
+            }
 
-        // Remove container directory
-        let dir = self.container_dir(id);
-        if dir.exists() {
-            fs::remove_dir_all(dir)?;
+            // Remove container directory
+            let dir = self.container_dir(id);
+            if dir.exists() {
+                fs::remove_dir_all(dir)?;
+            }
+            info!("Container {} deleted", id);
+            Ok(())
+        })();
+        if result.is_err() {
+            ENGINE_ERRORS.with_label_values(&["delete"]).inc();
         }
-        println!("Container {} deleted", id);
-        Ok(())
+        result
     }
 
     /// List all containers and their statuses.
