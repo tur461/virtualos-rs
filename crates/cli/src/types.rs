@@ -96,4 +96,9 @@ pub enum Commands {
     },
     /// Initialise host bridge and NAT (run once)
     NetworkInit,
+    /// Start a standalone metrics server (for local mode)
+    Monitor {
+        #[arg(long, default_value_t = 9090)]
+        port: u16,
+    },
 }

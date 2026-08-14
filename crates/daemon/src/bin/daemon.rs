@@ -25,12 +25,24 @@ struct DaemonArgs {
     /// TCP log sink address
     #[arg(long)]
     log_network: Option<String>,
+    /// Port for the metrics HTTP server (0 to disable)
+    #[arg(long, default_value_t = 9090)]
+    metrics_port: u16,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = DaemonArgs::parse();
     logging::init_logging(true, args.log_file, args.log_network.as_deref())?;
+
+    if args.metrics_port > 0 {
+        let addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), args.metrics_port);
+        tokio::spawn(async move {
+            if let Err(e) = monitoring::serve_metrics(addr).await {
+                tracing::error!("Metrics server error: {}", e);
+            }
+        });
+    }
 
     let socket_path = "/var/run/virtualos.sock";
 

@@ -16,5 +16,6 @@ tokio = { workspace = true, features = ["full"] }
 engine = { path = "../engine" }
 daemon = { path = "../daemon" }
 logging = { path = "../logging" }
+monitoring = { path = "../monitoring" }
 network = { path = "../network" }
 storage = { path = "../storage" }

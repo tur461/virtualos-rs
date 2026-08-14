@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use daemon::client::Client;
 use engine::{ContainerManager, ResourceLimits};
-use std::process;
+use std::{net::SocketAddr, process};
 use storage::Store;
 
 use crate::{helpers::parse_memory, types::Cli};
@@ -108,6 +108,7 @@ pub async fn run_with_client(cli: Cli, client: &mut Client) -> Result<()> {
         Commands::NetworkInit => {
             anyhow::bail!("network-init must be executed locally (as root).");
         }
+        _ => run_local(cli)?,
     }
     Ok(())
 }
@@ -246,6 +247,12 @@ pub fn run_local(cli: Cli) -> Result<()> {
         Commands::NetworkInit => {
             network::init_network().context("Network init failed")?;
             eprintln!("Bridge virtualos0 created and NAT rule added.");
+        }
+
+        Commands::Monitor { port } => {
+            let addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port);
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async { monitoring::serve_metrics(addr).await })?;
         }
     }
     Ok(())

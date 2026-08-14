@@ -22,11 +22,13 @@ resolver = "2"
 
 [workspace.dependencies]
 anyhow = "1.0.103"
+axum = "0.8.9"
 clap = "4.6.1"
 cgroups-rs = "0.5.0"
 ctrlc = "3.5.2"
 futures = "0.3.32"
 hex = "0.4.3"
+lazy_static = "1.5.0"
 nix = { version = "0.31.3", features = [
   "fs",
   "ioctl",
@@ -41,6 +43,7 @@ nix = { version = "0.31.3", features = [
   "sched",
   "hostname",
 ] }
+prometheus = "0.14.0"
 reqwest = { version = "0.13.4", default-features = false }
 serde = "1.0.228"
 serde_json = "1.0.150"
