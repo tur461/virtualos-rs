@@ -101,4 +101,16 @@ pub enum Commands {
         #[arg(long, default_value_t = 9090)]
         port: u16,
     },
+
+    /// eBPF operations
+    Ebpf {
+        #[command(subcommand)]
+        cmd: EbpfCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum EbpfCmd {
+    /// Trace all execve calls system‑wide
+    Trace,
 }

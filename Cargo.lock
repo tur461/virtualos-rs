@@ -436,6 +436,7 @@ dependencies = [
  "anyhow",
  "clap",
  "daemon",
+ "ebpf",
  "engine",
  "logging",
  "monitoring",

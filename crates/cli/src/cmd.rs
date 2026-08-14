@@ -1,10 +1,14 @@
 use anyhow::{Context, Result};
 use daemon::client::Client;
+use ebpf::EbpfManager;
 use engine::{ContainerManager, ResourceLimits};
 use std::{net::SocketAddr, process};
 use storage::Store;
 
-use crate::{helpers::parse_memory, types::Cli};
+use crate::{
+    helpers::parse_memory,
+    types::{Cli, EbpfCmd},
+};
 
 use super::types::Commands;
 
@@ -108,6 +112,16 @@ pub async fn run_with_client(cli: Cli, client: &mut Client) -> Result<()> {
         Commands::NetworkInit => {
             anyhow::bail!("network-init must be executed locally (as root).");
         }
+        // Commands::Ebpf {
+        //     cmd: EbpfCmd::Trace,
+        // } => {
+        //     let mut manager = EbpfManager::load()?;
+        //     let mut rx = manager.start_exec_tracing().await?;
+        //     println!("Tracing execve... Press Ctrl-C to stop.");
+        //     while let Some(event) = rx.recv().await {
+        //         println!("PID {} exec: {}", event.pid, event.filename);
+        //     }
+        // }
         _ => run_local(cli)?,
     }
     Ok(())
@@ -253,6 +267,21 @@ pub fn run_local(cli: Cli) -> Result<()> {
             let addr = SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port);
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(async { monitoring::serve_metrics(addr).await })?;
+        }
+
+        Commands::Ebpf {
+            cmd: EbpfCmd::Trace,
+        } => {
+            let mut manager = EbpfManager::load()?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                let mut rx = manager.start_exec_tracing().await?;
+                println!("Tracing execve... Press Ctrl-C to stop.");
+                while let Some(event) = rx.recv().await {
+                    println!("PID {} exec: {}", event.pid, event.filename);
+                }
+                Ok::<_, anyhow::Error>(())
+            })?
         }
     }
     Ok(())

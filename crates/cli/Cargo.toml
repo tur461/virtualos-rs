@@ -15,6 +15,7 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 
 # ------------ local deps ------------
+ebpf = { path = "../ebpf" }
 engine = { path = "../engine" }
 daemon = { path = "../daemon" }
 logging = { path = "../logging" }

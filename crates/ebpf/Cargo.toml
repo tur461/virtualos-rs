@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib"]   # we need a shared object that aya can load
+crate-type = ["cdylib", "rlib"]   # we need a shared object that aya can load
 
 [dependencies]
 anyhow = { workspace = true }
