@@ -273,15 +273,16 @@ pub fn run_local(cli: Cli) -> Result<()> {
             cmd: EbpfCmd::Trace,
         } => {
             let mut manager = EbpfManager::load()?;
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(async {
-                let mut rx = manager.start_exec_tracing().await?;
-                println!("Tracing execve... Press Ctrl-C to stop.");
-                while let Some(event) = rx.recv().await {
-                    println!("PID {} exec: {}", event.pid, event.filename);
-                }
-                Ok::<_, anyhow::Error>(())
-            })?
+            manager.start_filesystem_tracing()?;
+            // let rt = tokio::runtime::Runtime::new()?;
+            // rt.block_on(async {
+            //     let mut rx = manager.start_filesystem_tracing()?;
+            //     println!("Tracing execve... Press Ctrl-C to stop.");
+            //     while let Some(event) = rx.recv().await {
+            //         println!("PID {} exec: {}", event.pid, event.filename);
+            //     }
+            //     Ok::<_, anyhow::Error>(())
+            // })?
         }
     }
     Ok(())
