@@ -2,11 +2,6 @@
 
 use core::mem::size_of;
 
-use crate::{
-    maps::EVENTS,
-    //networking::SocketEvent
-};
-
 pub const EVENT_EXEC: u32 = 1;
 pub const EVENT_FORK: u32 = 2;
 pub const EVENT_EXIT: u32 = 3;

@@ -6,7 +6,6 @@ mod filesystem;
 mod maps;
 // mod networking;
 // mod process;
-mod utils;
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {

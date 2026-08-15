@@ -4,4 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = { workspace = true }
+kvm-bindings = "0.14.1"
+kvm-ioctls = "0.25.0"
+linux-loader = { version = "0.14.0", features = ["bzimage"] }
+memmap2 = "0.9.11"
+nix = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
 tracing = { workspace = true }
+vm-memory = { version = "0.18.0", features = ["backend-mmap", "xen"] }

@@ -5,7 +5,7 @@ use aya::{
     programs::{CgroupAttachMode, SockOps, TracePoint},
 };
 use aya_log::EbpfLogger;
-use std::{fs::File, os::fd::AsFd};
+use std::fs::File;
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -79,10 +79,10 @@ impl EbpfManager {
             loop {
                 match ring_buf.next() {
                     Some(item) => {
-                        if let Some(event) = parse_event(item) {
-                            if tx.blocking_send(event).is_err() {
-                                break;
-                            }
+                        if let Some(event) = parse_event(item)
+                            && tx.blocking_send(event).is_err()
+                        {
+                            break;
                         }
                     }
 

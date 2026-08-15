@@ -1,14 +1,24 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+// virtualization/src/lib.rs
+//! Lightweight KVM-based microVM implementation
+//!
+//! This module provides a minimal hypervisor abstraction similar to Firecracker,
+//! allowing users to run isolated workloads in a virtual machine.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub mod boot;
+pub mod config;
+pub mod cpu;
+pub mod device;
+pub mod error;
+pub mod kernel;
+pub mod memory;
+pub mod vm;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub use config::VmConfig;
+pub use error::VmmError;
+pub use vm::Vm;
+
+/// Result type alias for VM operations
+pub type Result<T> = std::result::Result<T, VmmError>;
+
+/// Library version information
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
