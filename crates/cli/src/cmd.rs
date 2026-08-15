@@ -4,6 +4,7 @@ use ebpf::EbpfManager;
 use engine::{ContainerManager, ResourceLimits};
 use std::{net::SocketAddr, process};
 use storage::Store;
+use virtualization::{Vm, VmConfig};
 
 use crate::{
     helpers::parse_memory,
@@ -87,6 +88,7 @@ pub async fn run_with_client(cli: Cli, client: &mut Client) -> Result<()> {
             store_dir,
             memory,
             cpus,
+            ..
         } => {
             if !detach {
                 anyhow::bail!(
@@ -225,6 +227,9 @@ pub fn run_local(cli: Cli) -> Result<()> {
             store_dir,
             memory,
             cpus,
+            vm,
+            kernel,
+            rootfs_image,
         } => {
             let store = Store::new(store_dir);
             let mem_limit = match memory {
@@ -237,24 +242,39 @@ pub fn run_local(cli: Cli) -> Result<()> {
             };
 
             // Create container
-            let container = match mgr.create(id, &image, &command, args, &store, limits) {
+            let container = match mgr.create(id, &image, &command, args.clone(), &store, limits) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("Run create error: {:?}", e);
                     process::exit(1);
                 }
             };
-            // Start it
-            if let Err(e) = mgr.start(&container.id, detach) {
-                eprintln!("Run start error: {:?}", e);
-            }
+            if vm {
+                let config = VmConfig {
+                    kernel_path: kernel,
+                    initramfs_path: Some(rootfs_image),
+                    command: command.clone(),
+                    args: args.clone(),
+                    memory_mb: 128, // default
+                    vcpu_count: 1,  // default
+                };
+                let mut vm = Vm::new(config)?;
+                let exit_code = vm.run()?;
+                println!("VM exited with code {}", exit_code);
+            } else {
+                // normal container run
+                // Start it
+                if let Err(e) = mgr.start(&container.id, detach) {
+                    eprintln!("Run start error: {:?}", e);
+                }
 
-            if !detach {
-                if rm {
-                    let _ = mgr.delete(&container.id);
-                } else {
-                    // Mark as stopped (the foreground run already did that if it succeeded)
-                    // If error, still try to set stopped state
+                if !detach {
+                    if rm {
+                        let _ = mgr.delete(&container.id);
+                    } else {
+                        // Mark as stopped (the foreground run already did that if it succeeded)
+                        // If error, still try to set stopped state
+                    }
                 }
             }
         }

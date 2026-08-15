@@ -93,6 +93,14 @@ pub enum Commands {
         interactive: bool, // not yet fully used; for future PTY
         #[arg(short = 't', long)]
         tty: bool,
+        #[arg(long)]
+        vm: bool,
+        /// Path to guest kernel image (required if --vm)
+        #[arg(long, default_value = "/usr/share/virtualos/vmlinux.bin")]
+        kernel: PathBuf,
+        /// Path to rootfs image (squashfs/ext4)
+        #[arg(long, default_value = "/usr/share/virtualos/rootfs.sqsh")]
+        rootfs_image: PathBuf,
     },
     /// Initialise host bridge and NAT (run once)
     NetworkInit,

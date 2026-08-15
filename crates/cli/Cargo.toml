@@ -22,3 +22,4 @@ logging = { path = "../logging" }
 monitoring = { path = "../monitoring" }
 network = { path = "../network" }
 storage = { path = "../storage" }
+virtualization = { path = "../virtualization" }

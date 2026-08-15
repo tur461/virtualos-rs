@@ -451,6 +451,7 @@ dependencies = [
  "storage",
  "tokio",
  "tracing",
+ "virtualization",
 ]
 
 [[package]]
