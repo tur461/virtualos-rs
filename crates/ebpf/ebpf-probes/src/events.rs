@@ -200,39 +200,6 @@ pub struct EventHeader {
     pub size: u16,
 }
 
-// #[repr(C)]
-// #[derive(Clone, Copy)]
-// pub struct NetworkEvent {
-//     pub header: EventHeader,
-//     pub socket: SocketEvent,
-// }
-//
-// impl NetworkEvent {
-//     #[inline(always)]
-//     pub fn socket(event: SocketEvent) -> Self {
-//         Self {
-//             header: EventHeader {
-//                 event_type: EventType::Socket,
-//                 size: core::mem::size_of::<SocketEvent>() as u16,
-//             },
-//             socket: event,
-//         }
-//     }
-// }
-
 const _: () = {
     assert!(size_of::<ForkEvent>() <= 128);
 };
-
-// #[inline(always)]
-// pub fn emit(event: NetworkEvent) -> Result<(), i64> {
-//     let Some(mut entry) = EVENTS.reserve::<NetworkEvent>(0) else {
-//         return Err(-1);
-//     };
-//
-//     entry.write(event);
-//
-//     entry.submit(0);
-//
-//     Ok(())
-// }

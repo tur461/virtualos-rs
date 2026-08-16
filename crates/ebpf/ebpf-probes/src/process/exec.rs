@@ -9,18 +9,18 @@ use aya_ebpf::{
 
 use crate::{
     events::{EVENT_EXEC, ExecEvent, FILENAME_LEN},
-    maps::EVENTS,
+    maps::{EVENTS, PROC_EXEC_SCRATCH},
 };
 
 #[tracepoint]
 pub fn sched_process_exec(ctx: TracePointContext) -> u32 {
-    match unsafe { try_sched_process_exec(ctx) } {
+    match try_sched_process_exec(ctx) {
         Ok(ret) => ret,
         Err(_) => 0,
     }
 }
 
-unsafe fn try_sched_process_exec(_ctx: TracePointContext) -> Result<u32, i32> {
+fn try_sched_process_exec(_ctx: TracePointContext) -> Result<u32, i32> {
     let pid_tgid = bpf_get_current_pid_tgid();
 
     let pid = pid_tgid as u32;
@@ -38,21 +38,24 @@ unsafe fn try_sched_process_exec(_ctx: TracePointContext) -> Result<u32, i32> {
         Err(_) => [0u8; aya_ebpf::TASK_COMM_LEN],
     };
 
-    let mut event = ExecEvent {
-        event_type: EVENT_EXEC,
-
-        pid,
-        tgid,
-
-        uid,
-        gid,
-
-        cgroup_id,
-
-        comm,
-
-        filename: [0u8; FILENAME_LEN],
+    let scratch = match PROC_EXEC_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return Err(-1),
     };
+
+    let event = unsafe { &mut *scratch };
+
+    (*event).event_type = EVENT_EXEC;
+
+    (*event).pid = pid;
+    (*event).tgid = tgid;
+
+    (*event).uid = uid;
+    (*event).gid = gid;
+
+    (*event).cgroup_id = cgroup_id;
+    (*event).comm = comm;
+    (*event).filename = [0u8; FILENAME_LEN];
 
     /*
      * sched_process_exec is a kernel tracepoint and does not provide
@@ -66,14 +69,14 @@ unsafe fn try_sched_process_exec(_ctx: TracePointContext) -> Result<u32, i32> {
      * can populate it without changing the userspace event structure.
      */
 
-    event.filename[..comm.len()].copy_from_slice(&comm);
+    (*event).filename[..comm.len()].copy_from_slice(&comm);
 
     let mut buf = match EVENTS.reserve::<ExecEvent>(0) {
         Some(buf) => buf,
         None => return Ok(0),
     };
 
-    buf.write(event);
+    buf.write(*event);
     buf.submit(0);
 
     Ok(0)

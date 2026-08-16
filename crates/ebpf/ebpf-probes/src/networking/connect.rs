@@ -9,18 +9,18 @@ use aya_ebpf::{
 
 use crate::{
     events::{EVENT_NET_CONNECT, NET_COMM_LEN, NetSocketEvent},
-    maps::EVENTS,
+    maps::{EVENTS, NW_CONNECT_SCRATCH},
 };
 
 #[tracepoint]
 pub fn sys_enter_connect(ctx: TracePointContext) -> u32 {
-    match unsafe { try_connect(ctx) } {
+    match try_connect(ctx) {
         Ok(ret) => ret,
         Err(_) => 0,
     }
 }
 
-unsafe fn try_connect(ctx: TracePointContext) -> Result<u32, i32> {
+fn try_connect(ctx: TracePointContext) -> Result<u32, i32> {
     /*
      * connect(int fd, const struct sockaddr *addr, socklen_t len)
      *
@@ -31,7 +31,7 @@ unsafe fn try_connect(ctx: TracePointContext) -> Result<u32, i32> {
      * args[0] starts at offset 24.
      */
 
-    let fd = ctx.read_at::<i32>(24).map_err(|_| -1)?;
+    let fd = unsafe { ctx.read_at::<i32>(24).map_err(|_| -1) }?;
 
     let pid_tgid = bpf_get_current_pid_tgid();
 
@@ -43,38 +43,40 @@ unsafe fn try_connect(ctx: TracePointContext) -> Result<u32, i32> {
     let uid = uid_gid as u32;
     let gid = (uid_gid >> 32) as u32;
 
-    let cgroup_id = bpf_get_current_cgroup_id();
+    let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
 
     let comm = bpf_get_current_comm().unwrap_or([0u8; NET_COMM_LEN]);
 
-    let event = NetSocketEvent {
-        event_type: EVENT_NET_CONNECT,
-
-        pid,
-        tgid,
-
-        uid,
-        gid,
-
-        cgroup_id,
-
-        fd,
-
-        family: 0,
-        socket_type: 0,
-        protocol: 0,
-
-        _pad: 0,
-
-        comm,
+    let scratch = match NW_CONNECT_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return Ok(0),
     };
+
+    let event = unsafe { &mut *scratch };
+
+    (*event).event_type = EVENT_NET_CONNECT;
+
+    (*event).pid = pid;
+    (*event).tgid = tgid;
+
+    (*event).uid = uid;
+    (*event).gid = gid;
+
+    (*event).cgroup_id = cgroup_id;
+
+    (*event).comm = comm;
+
+    (*event).fd = fd;
+    (*event).family = 0;
+    (*event).socket_type = 0;
+    (*event).protocol = 0;
+    (*event)._pad = 0;
 
     let mut buf = match EVENTS.reserve::<NetSocketEvent>(0) {
         Some(buf) => buf,
         None => return Ok(0),
     };
-
-    buf.write(event);
+    buf.write(*event);
     buf.submit(0);
 
     Ok(0)

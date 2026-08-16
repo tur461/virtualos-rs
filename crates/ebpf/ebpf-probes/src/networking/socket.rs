@@ -1,9 +1,12 @@
 use aya_ebpf::{EbpfContext, helpers::generated::bpf_ktime_get_ns, programs::SockOpsContext};
 
-use crate::networking::{
-    address::extract_address,
-    events::classify_sock_op,
-    types::{SocketEvent, SocketMetadata, TransportProtocol},
+use crate::{
+    maps::NW_SOCKET_SCRATCH,
+    networking::{
+        address::extract_address,
+        events::classify_sock_op,
+        types::{SocketEvent, SocketMetadata, TransportProtocol},
+    },
 };
 
 #[inline(always)]
@@ -28,36 +31,42 @@ pub fn socket_metadata(ctx: &SockOpsContext) -> SocketMetadata {
 }
 
 #[inline(always)]
-pub fn socket_event(ctx: &SockOpsContext) -> SocketEvent {
-    let mut event = SocketEvent::zeroed();
-
+pub fn socket_event(ctx: &SockOpsContext) -> Option<SocketEvent> {
     let family = ctx.family();
 
     let local = extract_address(family, ctx.local_ip4(), ctx.local_ip6());
 
     let remote = extract_address(family, ctx.remote_ip4(), ctx.remote_ip6());
 
-    event.timestamp_ns = unsafe { bpf_ktime_get_ns() };
+    let scratch = match NW_SOCKET_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return None,
+    };
 
-    event.pid = ctx.pid();
-    event.tgid = ctx.tgid();
-    event.uid = ctx.uid();
-    event.gid = ctx.gid();
+    let event = unsafe { &mut *scratch };
 
-    event.family = local.family;
+    (*event).timestamp_ns = unsafe { bpf_ktime_get_ns() };
 
-    event.protocol = TransportProtocol::Tcp;
+    (*event).pid = ctx.pid();
+    (*event).tgid = ctx.tgid();
 
-    event.kind = classify_sock_op(ctx.op());
+    (*event).uid = ctx.uid();
+    (*event).gid = ctx.gid();
 
-    event.local_addr = local.address;
-    event.remote_addr = remote.address;
+    (*event).local_addr = local.address;
+    (*event).remote_addr = remote.address;
 
-    event.local_port = ctx.local_port() as u16;
-    event.remote_port = ctx.remote_port() as u16;
+    (*event).local_port = ctx.local_port() as u16;
+    (*event).remote_port = ctx.remote_port() as u16;
 
-    event.old_state = ctx.arg(0) as u8;
-    event.new_state = ctx.arg(1) as u8;
+    (*event).family = local.family;
+    (*event).protocol = TransportProtocol::Tcp;
+    (*event).kind = classify_sock_op(ctx.op());
 
-    event
+    (*event)._pad = [0u8; 2];
+
+    (*event).old_state = ctx.arg(0) as u8;
+    (*event).new_state = ctx.arg(1) as u8;
+
+    Some(*event)
 }

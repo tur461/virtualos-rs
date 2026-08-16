@@ -1,0 +1,97 @@
+use aya_ebpf::{
+    EbpfContext, helpers::bpf_ktime_get_ns, macros::tracepoint, programs::TracePointContext,
+};
+
+use crate::{
+    maps::NW_UDP_SCRATCH,
+    networking::{
+        events::emit_sock_event,
+        types::{AddressFamily, SocketEvent, SocketEventKind, TransportProtocol},
+    },
+};
+
+#[tracepoint]
+pub fn udp_sendmsg(ctx: TracePointContext) -> u32 {
+    let mut event = SocketEvent::empty();
+
+    event.timestamp_ns = unsafe { bpf_ktime_get_ns() };
+
+    event.pid = ctx.pid();
+    event.tgid = ctx.tgid();
+
+    event.family = AddressFamily::Unknown;
+    event.protocol = TransportProtocol::Udp;
+    event.kind = SocketEventKind::UdpSend;
+
+    let scratch = match NW_UDP_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return 0,
+    };
+
+    let event = unsafe { &mut *scratch };
+
+    (*event).timestamp_ns = unsafe { bpf_ktime_get_ns() };
+
+    (*event).pid = ctx.pid();
+    (*event).tgid = ctx.tgid();
+
+    (*event).uid = ctx.uid();
+    (*event).gid = ctx.gid();
+
+    (*event).family = AddressFamily::Unknown;
+    (*event).protocol = TransportProtocol::Udp;
+    (*event).kind = SocketEventKind::UdpSend;
+
+    (*event)._pad = [0u8; 2];
+
+    let _ = emit_sock_event(*event);
+
+    0
+}
+
+#[tracepoint]
+pub fn udp_recvmsg(ctx: TracePointContext) -> u32 {
+    let mut event = SocketEvent::empty();
+
+    event.timestamp_ns = unsafe { bpf_ktime_get_ns() };
+
+    event.pid = ctx.pid();
+    event.tgid = ctx.tgid();
+
+    event.family = AddressFamily::Unknown;
+    event.protocol = TransportProtocol::Udp;
+    event.kind = SocketEventKind::UdpReceive;
+
+    let scratch = match NW_SOCKET_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return None,
+    };
+
+    let event = unsafe { &mut *scratch };
+
+    (*event).timestamp_ns = unsafe { bpf_ktime_get_ns() };
+
+    (*event).pid = ctx.pid();
+    (*event).tgid = ctx.tgid();
+
+    (*event).uid = ctx.uid();
+    (*event).gid = ctx.gid();
+
+    (*event).local_addr = local.address;
+    (*event).remote_addr = remote.address;
+
+    (*event).local_port = ctx.local_port() as u16;
+    (*event).remote_port = ctx.remote_port() as u16;
+
+    (*event).family = local.family;
+    (*event).protocol = TransportProtocol::Tcp;
+    (*event).kind = classify_sock_op(ctx.op());
+
+    (*event)._pad = [0u8; 2];
+
+    (*event).old_state = ctx.arg(0) as u8;
+    (*event).new_state = ctx.arg(1) as u8;
+    let _ = emit_sock_event(event);
+
+    0
+}

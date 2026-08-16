@@ -9,20 +9,20 @@ use aya_ebpf::{
 
 use crate::{
     events::{EVENT_FS_OPEN, FsOpenEvent, TASK_COMM_LEN},
-    maps::EVENTS,
+    maps::{EVENTS, FS_OPEN_SCRATCH},
 };
 
 const PATH_LEN: usize = 256;
 
 #[tracepoint]
 pub fn sys_enter_openat(ctx: TracePointContext) -> u32 {
-    match unsafe { try_sys_enter_openat(ctx) } {
+    match try_sys_enter_openat(ctx) {
         Ok(ret) => ret,
         Err(_) => 0,
     }
 }
 
-unsafe fn try_sys_enter_openat(ctx: TracePointContext) -> Result<u32, i32> {
+fn try_sys_enter_openat(ctx: TracePointContext) -> Result<u32, i32> {
     /*
      * sys_enter_openat tracepoint:
      *
@@ -54,9 +54,9 @@ unsafe fn try_sys_enter_openat(ctx: TracePointContext) -> Result<u32, i32> {
      * Therefore args[1] starts at offset 32.
      */
 
-    let filename_ptr = ctx.read_at::<*const u8>(32).map_err(|_| -1)?;
+    let filename_ptr = unsafe { ctx.read_at::<*const u8>(32).map_err(|_| -1) }?;
 
-    let flags = ctx.read_at::<u64>(40).map_err(|_| -1)?;
+    let flags = unsafe { ctx.read_at::<u64>(40).map_err(|_| -1) }?;
 
     if filename_ptr.is_null() {
         return Ok(0);
@@ -72,7 +72,7 @@ unsafe fn try_sys_enter_openat(ctx: TracePointContext) -> Result<u32, i32> {
     let uid = uid_gid as u32;
     let gid = (uid_gid >> 32) as u32;
 
-    let cgroup_id = bpf_get_current_cgroup_id();
+    let cgroup_id = unsafe { bpf_get_current_cgroup_id() };
 
     let comm = bpf_get_current_comm().unwrap_or([0u8; TASK_COMM_LEN]);
 
@@ -81,38 +81,42 @@ unsafe fn try_sys_enter_openat(ctx: TracePointContext) -> Result<u32, i32> {
     /*
      * Read the userspace pathname safely.
      */
-    let path_slice = match bpf_probe_read_user_str_bytes(filename_ptr, &mut path) {
+    let path_slice = match unsafe { bpf_probe_read_user_str_bytes(filename_ptr, &mut path) } {
         Ok(bytes) => bytes,
         Err(_) => return Ok(0),
     };
 
     let path_len = path_slice.len();
 
-    let event = FsOpenEvent {
-        event_type: EVENT_FS_OPEN,
-
-        pid,
-        tgid,
-
-        uid,
-        gid,
-
-        cgroup_id,
-
-        flags,
-
-        comm,
-
-        path,
-        path_len: path_len as u32,
+    let scratch = match FS_OPEN_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return Ok(0),
     };
+
+    let event = unsafe { &mut *scratch };
+
+    (*event).event_type = EVENT_FS_OPEN;
+
+    (*event).pid = pid;
+    (*event).tgid = tgid;
+
+    (*event).uid = uid;
+    (*event).gid = gid;
+
+    (*event).cgroup_id = cgroup_id;
+
+    (*event).flags = flags;
+
+    (*event).comm = comm;
+
+    (*event).path = path;
+    (*event).path_len = path_len as u32;
 
     let mut buf = match EVENTS.reserve::<FsOpenEvent>(0) {
         Some(buf) => buf,
         None => return Ok(0),
     };
-
-    buf.write(event);
+    buf.write(*event);
     buf.submit(0);
 
     Ok(0)

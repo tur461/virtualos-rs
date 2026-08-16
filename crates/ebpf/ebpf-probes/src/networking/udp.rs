@@ -3,46 +3,75 @@ use aya_ebpf::{
 };
 
 use crate::{
-    events::{NetworkEvent, emit},
-    networking::types::{AddressFamily, SocketEvent, SocketEventKind, TransportProtocol},
+    maps::NW_UDP_SCRATCH,
+    networking::{
+        events::emit_sock_event,
+        types::{AddressFamily, SocketEvent, SocketEventKind, TransportProtocol},
+    },
 };
 
 #[tracepoint]
+pub fn udp_bind(ctx: TracePointContext) -> u32 {
+    if let Some(event) = udp_sock_tracepoint(ctx, SocketEventKind::UdpBind) {
+        let _ = emit_sock_event(event);
+        return 0;
+    }
+
+    1
+}
+
+#[tracepoint]
+pub fn udp_connect(ctx: TracePointContext) -> u32 {
+    if let Some(event) = udp_sock_tracepoint(ctx, SocketEventKind::UdpConnect) {
+        let _ = emit_sock_event(event);
+        return 0;
+    }
+
+    1
+}
+
+#[tracepoint]
 pub fn udp_sendmsg(ctx: TracePointContext) -> u32 {
-    let mut event = SocketEvent::empty();
+    if let Some(event) = udp_sock_tracepoint(ctx, SocketEventKind::UdpSend) {
+        let _ = emit_sock_event(event);
+        return 0;
+    }
 
-    event.timestamp_ns = unsafe { bpf_ktime_get_ns() };
-
-    event.pid = ctx.pid();
-    event.tgid = ctx.tgid();
-
-    event.family = AddressFamily::Unknown;
-    event.protocol = TransportProtocol::Udp;
-    event.kind = SocketEventKind::UdpSend;
-
-    let network_event = NetworkEvent::socket(event);
-
-    let _ = emit(network_event);
-
-    0
+    1
 }
 
 #[tracepoint]
 pub fn udp_recvmsg(ctx: TracePointContext) -> u32 {
-    let mut event = SocketEvent::empty();
+    if let Some(event) = udp_sock_tracepoint(ctx, SocketEventKind::UdpReceive) {
+        let _ = emit_sock_event(event);
+        return 0;
+    }
 
-    event.timestamp_ns = unsafe { bpf_ktime_get_ns() };
+    1
+}
 
-    event.pid = ctx.pid();
-    event.tgid = ctx.tgid();
+#[inline]
+fn udp_sock_tracepoint(ctx: TracePointContext, kind: SocketEventKind) -> Option<SocketEvent> {
+    let scratch = match NW_UDP_SCRATCH.get_ptr_mut(0) {
+        Some(ptr) => ptr,
+        None => return None,
+    };
 
-    event.family = AddressFamily::Unknown;
-    event.protocol = TransportProtocol::Udp;
-    event.kind = SocketEventKind::UdpReceive;
+    let event = unsafe { &mut *scratch };
 
-    let network_event = NetworkEvent::socket(event);
+    (*event).timestamp_ns = unsafe { bpf_ktime_get_ns() };
 
-    let _ = emit(network_event);
+    (*event).pid = ctx.pid();
+    (*event).tgid = ctx.tgid();
 
-    0
+    (*event).uid = ctx.uid();
+    (*event).gid = ctx.gid();
+
+    (*event).family = AddressFamily::Unknown;
+    (*event).protocol = TransportProtocol::Udp;
+    (*event).kind = kind;
+
+    (*event)._pad = [0u8; 2];
+
+    Some(*event)
 }
