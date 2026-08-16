@@ -57,7 +57,7 @@ pub enum Commands {
     Logs { id: String },
     /// Remove a container (use -f to force)
     #[command(alias = "rm")]
-    Rm {
+    Remove {
         id: String,
         /// Force removal (stop first if running)
         #[arg(short, long)]

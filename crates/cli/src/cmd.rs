@@ -55,7 +55,7 @@ pub async fn run_with_client(cli: Cli, client: &mut Client) -> Result<()> {
             client.stop(&id).await?;
             println!("Container {} stopped.", id);
         }
-        Commands::Rm { id, force } => {
+        Commands::Remove { id, force } => {
             client.delete(&id, force).await?;
             println!("Container {} removed.", id);
         }
@@ -187,7 +187,7 @@ pub fn run_local(cli: Cli) -> Result<()> {
             println!("Logs not yet implemented.");
         }
 
-        Commands::Rm { id, force } => {
+        Commands::Remove { id, force } => {
             // Stop if running, then delete
             if force && mgr.is_container_running(&id) {
                 mgr.stop(&id)?;
